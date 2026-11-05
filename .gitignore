@@ -1,0 +1,17 @@
+node_modules/
+.next/
+dist/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+.env
+*.db
+apps/api/data/
+apps/api/app/assets/templates/*.pdf
+.DS_Store
+*.tsbuildinfo
+*.egg-info/

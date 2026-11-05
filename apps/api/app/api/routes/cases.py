@@ -1,0 +1,146 @@
+import asyncio
+import json
+from uuid import UUID
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
+
+from app.core.container import Container
+from app.core.deps import get_case_service, get_container
+from app.schemas.case import CaseCreate, CaseRead
+from app.schemas.chat import ChatRequest, FieldUpdateRequest
+from app.schemas.gap import FillAndSignRequest, GapReport, ManualClassifyRequest
+from app.schemas.workspace import CaseWorkspace, UploadResult
+from app.services.case_service import CaseService
+from app.services.progress_events import iter_case_progress
+from app.workers.queue import enqueue_case_processing
+from app.workers.runner import process_case_job
+
+_STREAM_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+router = APIRouter(prefix="/cases", tags=["cases"])
+
+
+@router.get("", response_model=list[CaseRead])
+async def list_cases(service: CaseService = Depends(get_case_service)) -> list[CaseRead]:
+    return await service.list_cases()
+
+
+@router.post("", response_model=CaseRead, status_code=201)
+async def create_case(
+    payload: CaseCreate,
+    service: CaseService = Depends(get_case_service),
+) -> CaseRead:
+    return await service.create_case(payload)
+
+
+@router.get("/{case_id}", response_model=CaseWorkspace)
+async def get_case(case_id: UUID, service: CaseService = Depends(get_case_service)) -> CaseWorkspace:
+    return await service.workspace(case_id)
+
+
+@router.get("/{case_id}/status", response_model=GapReport)
+async def case_status(case_id: UUID, service: CaseService = Depends(get_case_service)) -> GapReport:
+    return await service.gap(case_id)
+
+
+@router.get("/{case_id}/events")
+async def case_events(case_id: UUID) -> StreamingResponse:
+    return StreamingResponse(
+        iter_case_progress(case_id),
+        media_type="text/event-stream",
+        headers=_STREAM_HEADERS,
+    )
+
+
+@router.post("/{case_id}/upload", response_model=UploadResult)
+async def upload_documents(
+    case_id: UUID,
+    background_tasks: BackgroundTasks,
+    files: list[UploadFile] = File(...),
+    service: CaseService = Depends(get_case_service),
+    container: Container = Depends(get_container),
+) -> UploadResult:
+    result, schedule = await service.add_uploads(case_id, files)
+    if schedule:
+        job_id = await enqueue_case_processing(case_id)
+        if job_id is None:
+            background_tasks.add_task(process_case_job, case_id, container)
+        result.job_id = job_id
+    return result
+
+
+@router.post("/{case_id}/classify-manual", response_model=CaseWorkspace)
+async def classify_manual(
+    case_id: UUID,
+    payload: ManualClassifyRequest,
+    service: CaseService = Depends(get_case_service),
+) -> CaseWorkspace:
+    return await service.classify_manual(case_id, payload)
+
+
+@router.post("/{case_id}/chat", response_model=CaseWorkspace)
+async def chat(
+    case_id: UUID,
+    payload: ChatRequest,
+    service: CaseService = Depends(get_case_service),
+) -> CaseWorkspace:
+    return await service.chat(case_id, payload)
+
+
+@router.post("/{case_id}/chat/stream")
+async def chat_stream(
+    case_id: UUID,
+    payload: ChatRequest,
+    service: CaseService = Depends(get_case_service),
+) -> StreamingResponse:
+    workspace = await service.chat(case_id, payload)
+    reply = workspace.messages[-1].content if workspace.messages else ""
+
+    async def chunks():
+        step = 18
+        for start in range(0, len(reply), step):
+            yield f"event: delta\ndata: {json.dumps(reply[start:start + step])}\n\n"
+            await asyncio.sleep(0.02)
+        if not reply:
+            yield "event: delta\ndata: \"\"\n\n"
+        yield f"event: workspace\ndata: {workspace.model_dump_json()}\n\n"
+
+    return StreamingResponse(chunks(), media_type="text/event-stream", headers=_STREAM_HEADERS)
+
+
+@router.post("/{case_id}/fields", response_model=CaseWorkspace)
+async def set_field(
+    case_id: UUID,
+    payload: FieldUpdateRequest,
+    service: CaseService = Depends(get_case_service),
+) -> CaseWorkspace:
+    return await service.set_field(case_id, payload)
+
+
+@router.post("/{case_id}/fill-and-sign", response_model=CaseWorkspace)
+async def fill_and_sign(
+    case_id: UUID,
+    payload: FillAndSignRequest,
+    service: CaseService = Depends(get_case_service),
+) -> CaseWorkspace:
+    return await service.fill_and_sign(case_id, payload)
+
+
+@router.get("/{case_id}/documents/{document_id}/file")
+async def download_document(
+    case_id: UUID,
+    document_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> FileResponse:
+    path, mime_type, filename = await service.document_file(case_id, document_id)
+    return FileResponse(path, media_type=mime_type, filename=filename)
+
+
+@router.get("/{case_id}/signed-document")
+async def download_signed_document(
+    case_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> FileResponse:
+    path = await service.signed_pdf(case_id)
+    return FileResponse(path, media_type="application/pdf", filename=path.name)
