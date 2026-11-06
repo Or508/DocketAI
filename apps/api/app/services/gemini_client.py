@@ -1,4 +1,5 @@
 import logging
+from collections.abc import AsyncIterator
 from typing import Protocol
 
 from app.core.config import Settings
@@ -14,6 +15,8 @@ class GeminiUnavailable(RuntimeError):
 
 
 class GeminiClient(Protocol):
+    configured: bool
+
     async def classify_document(
         self,
         *,
@@ -26,11 +29,17 @@ class GeminiClient(Protocol):
 
     async def embed(self, text: str) -> list[float]: ...
 
+    def stream_text(self, *, system: str, prompt: str) -> AsyncIterator[str]: ...
+
 
 class GoogleGeminiClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._sdk = None
+
+    @property
+    def configured(self) -> bool:
+        return bool(self._settings.gemini_api_key)
 
     def _client(self):
         if not self._settings.gemini_api_key:
@@ -103,6 +112,19 @@ class GoogleGeminiClient:
             ),
         )
         return _parse(response, FieldExtraction)
+
+    async def stream_text(self, *, system: str, prompt: str) -> AsyncIterator[str]:
+        from google.genai import types
+
+        stream = await self._client().aio.models.generate_content_stream(
+            model=self._settings.gemini_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(system_instruction=system, temperature=0.2),
+        )
+        async for chunk in stream:
+            text = getattr(chunk, "text", None)
+            if text:
+                yield text
 
     async def embed(self, text: str) -> list[float]:
         import asyncio

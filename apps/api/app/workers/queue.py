@@ -15,9 +15,13 @@ async def enqueue_case_processing(case_id: UUID) -> str | None:
     try:
         from arq import create_pool
         from arq.connections import RedisSettings
+        from arq.constants import default_queue_name, health_check_key_suffix
 
         redis_settings = RedisSettings.from_dsn(settings.redis_url)
         pool = await asyncio.wait_for(create_pool(redis_settings), timeout=2.5)
+        if not await pool.exists(default_queue_name + health_check_key_suffix):
+            logger.warning("No ARQ worker is running; the upload will be processed in-process")
+            return None
         job = await pool.enqueue_job("process_case", str(case_id))
         return job.job_id if job else None
     except Exception:

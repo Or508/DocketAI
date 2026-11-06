@@ -1,7 +1,12 @@
 import type {
   CaseRead,
   CaseWorkspace,
+  ChatRequest,
+  FieldUpdateRequest,
   ProcessRead,
+  SigningLinkCreated,
+  SigningLinkRead,
+  StreamError,
   UploadResult,
 } from "@docketai/shared-types";
 
@@ -16,7 +21,7 @@ export class ApiError extends Error {
   }
 }
 
-function detailFrom(body: unknown): string {
+export function detailFrom(body: unknown): string {
   if (!body || typeof body !== "object" || !("detail" in body)) return "Request failed";
   const detail = (body as { detail: unknown }).detail;
   if (typeof detail === "string") return detail;
@@ -66,27 +71,40 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ document_id: documentId, document_type: documentType }),
     }),
-  chat: (caseId: string, message: string) =>
-    request<CaseWorkspace>(`/cases/${caseId}/chat`, {
+  chat: (caseId: string, message: string) => {
+    const body: ChatRequest = { message };
+    return request<CaseWorkspace>(`/cases/${caseId}/chat`, {
       method: "POST",
-      body: JSON.stringify({ message }),
-    }),
+      body: JSON.stringify(body),
+    });
+  },
   streamChat: (caseId: string, message: string, onDelta: (text: string) => void) =>
     readChatStream(caseId, message, onDelta),
-  setField: (caseId: string, key: string, value: string) =>
-    request<CaseWorkspace>(`/cases/${caseId}/fields`, {
+  setField: (caseId: string, key: string, value: string) => {
+    const body: FieldUpdateRequest = { key, value };
+    return request<CaseWorkspace>(`/cases/${caseId}/fields`, {
       method: "POST",
-      body: JSON.stringify({ key, value }),
-    }),
+      body: JSON.stringify(body),
+    });
+  },
   sign: (caseId: string, signaturePngBase64: string) =>
     request<CaseWorkspace>(`/cases/${caseId}/fill-and-sign`, {
       method: "POST",
-      body: JSON.stringify({ signature_png_base64: signaturePngBase64, field_values: {} }),
+      body: JSON.stringify({ signature_png_base64: signaturePngBase64, field_values: {}, consent: true }),
     }),
+  createSigningLink: (caseId: string) =>
+    request<SigningLinkCreated>(`/cases/${caseId}/signing-links`, { method: "POST" }),
+  signingLink: (caseId: string) => request<SigningLinkRead>(`/cases/${caseId}/signing-link`),
+  revokeSigningLink: (caseId: string) =>
+    request<void>(`/cases/${caseId}/signing-link`, { method: "DELETE" }),
 };
 
 export function signedDocumentUrl(caseId: string) {
   return `${base}/cases/${caseId}/signed-document`;
+}
+
+export function certificateUrl(caseId: string) {
+  return `${base}/cases/${caseId}/certificate`;
 }
 
 export function documentFileUrl(caseId: string, documentId: string) {
@@ -98,10 +116,19 @@ async function readChatStream(
   message: string,
   onDelta: (text: string) => void,
 ): Promise<CaseWorkspace> {
-  const response = await fetch(`${base}/cases/${caseId}/chat/stream`, {
+  const body: ChatRequest = { message };
+  return readEventStream<CaseWorkspace>(`${base}/cases/${caseId}/chat/stream`, body, onDelta);
+}
+
+export async function readEventStream<T>(
+  url: string,
+  body: unknown,
+  onDelta: (text: string) => void,
+): Promise<T> {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify(body),
     cache: "no-store",
   });
   if (!response.ok) {
@@ -118,7 +145,7 @@ async function readChatStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let assembled = "";
-  let workspace: CaseWorkspace | null = null;
+  let result: T | null = null;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -137,11 +164,18 @@ async function readChatStream(
         assembled += JSON.parse(data) as string;
         onDelta(assembled);
       }
-      if (event === "workspace") workspace = JSON.parse(data) as CaseWorkspace;
+      if (event === "replace") {
+        assembled = JSON.parse(data) as string;
+        onDelta(assembled);
+      }
+      if (event === "error") {
+        throw new ApiError((JSON.parse(data) as StreamError).detail, 502);
+      }
+      if (event === "workspace") result = JSON.parse(data) as T;
     }
   }
-  if (!workspace) throw new ApiError("The clerk did not finish the reply.", 502);
-  return workspace;
+  if (!result) throw new ApiError("The clerk did not finish the reply.", 502);
+  return result;
 }
 
 export const apiBaseUrl = base;

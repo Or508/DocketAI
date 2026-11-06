@@ -5,6 +5,12 @@ from app.db.session import get_engine
 _CASE_COLUMNS = {
     "signer_verification_id": "VARCHAR(40)",
     "content_sha256": "VARCHAR(64)",
+    "file_sha256": "VARCHAR(64)",
+    "signed_at": "TIMESTAMP WITH TIME ZONE",
+    "case_reference": "VARCHAR(20)",
+    "data_completed_at": "TIMESTAMP WITH TIME ZONE",
+    "content_path": "VARCHAR(1024)",
+    "certificate_data": "JSON",
     "pipeline_stage": "VARCHAR(32) DEFAULT 'draft' NOT NULL",
     "pipeline_message": "VARCHAR(240) DEFAULT '' NOT NULL",
     "pipeline_completed": "INTEGER DEFAULT 0 NOT NULL",

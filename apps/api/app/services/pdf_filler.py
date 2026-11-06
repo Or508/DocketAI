@@ -3,27 +3,28 @@ import hashlib
 import html
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 import fitz
 
 from app.core.exceptions import BadRequestError, UnprocessableError
+from app.domain.certificate import CertificateData, format_times
 from app.domain.text_layout import contains_hebrew, shape_for_pdf
 from app.services.fonts import bundled_hebrew_font
 
 logger = logging.getLogger(__name__)
 
 _READ_ONLY = int(getattr(fitz, "PDF_FIELD_IS_READ_ONLY", 1))
-_ISRAEL = ZoneInfo("Asia/Jerusalem")
 
 
 @dataclass(frozen=True)
 class SignedArtifact:
     content_sha256: str
+    file_sha256: str
     signer_verification_id: str
+    content_path: Path
+    total_pages: int
 
 
 def decode_signature_png(payload: str) -> bytes:
@@ -47,9 +48,8 @@ class PdfFillerService:
     """Fill an AcroForm, stamp a signature, then flatten both into page content.
 
     Hebrew is painted after flattening with python-bidi and arabic-reshaper so
-    the widget appearance cannot cover it. The audit footer records the SHA-256
-    of that flattened packet. The digest cannot include the footer that prints
-    it, so the stamp is applied after the hash is taken.
+    the widget appearance cannot cover it. The content digest is the flattened
+    form before the certificate page and the page footers are added.
     """
 
     def __init__(self, font_path: Path | None) -> None:
@@ -65,8 +65,8 @@ class PdfFillerService:
         signature_rect: list[float],
         page_index: int,
         rtl_fields: set[str],
-        case_id: str,
-        signer_verification_id: str | None = None,
+        certificate: CertificateData,
+        signed_at: datetime,
     ) -> SignedArtifact:
         missing = _missing_fields(template_path, set(values))
         if missing:
@@ -77,24 +77,13 @@ class PdfFillerService:
         if rtl_fields and font_path is None:
             raise UnprocessableError("A Hebrew font is required before this form can be flattened.")
 
-        signer_id = signer_verification_id or f"DV-{uuid4().hex[:12].upper()}"
+        signer_id = certificate.signer_verification_id
         output_path.parent.mkdir(parents=True, exist_ok=True)
         document = fitz.open(template_path)
         try:
             if page_index < 0 or page_index >= document.page_count:
                 raise UnprocessableError("The signature page is outside the template.")
-            rtl_paint: list[tuple[int, fitz.Rect, str]] = []
-            for index, page in enumerate(document):
-                for widget in list(page.widgets() or []):
-                    if widget.field_name not in values:
-                        widget.field_flags = int(widget.field_flags or 0) | _READ_ONLY
-                        widget.update()
-                        continue
-                    value = values[widget.field_name]
-                    rtl = widget.field_name in rtl_fields or contains_hebrew(value)
-                    _write_widget(widget, value, rtl)
-                    if rtl:
-                        rtl_paint.append((index, fitz.Rect(widget.rect), value))
+            rtl_paint = self._apply_values(document, values, rtl_fields)
             page = document[page_index]
             page.insert_image(
                 fitz.Rect(*signature_rect),
@@ -105,10 +94,92 @@ class PdfFillerService:
             document.bake(annots=True, widgets=True)
             for index, rect, value in rtl_paint:
                 _paint_rtl(document[index], rect, value, font_path)
-            digest = hashlib.sha256(document.tobytes(garbage=4, deflate=True)).hexdigest()
-            _stamp_audit(document, case_id=case_id, digest=digest, signer_id=signer_id, font_path=font_path)
-            document.save(output_path, garbage=4, deflate=True)
-            return SignedArtifact(content_sha256=digest, signer_verification_id=signer_id)
+            form_bytes = document.tobytes(garbage=4, deflate=True)
+            digest = hashlib.sha256(form_bytes).hexdigest()
+            form_path = output_path.with_name(output_path.stem + "-form.pdf")
+            form_path.write_bytes(form_bytes)
+        finally:
+            document.close()
+        # tobytes(garbage=4) leaves the open document unable to embed a font.
+        document = fitz.open(stream=form_bytes)
+        try:
+            try:
+                from app.services.certificate_page import add_certificate_page
+
+                add_certificate_page(
+                    document,
+                    certificate,
+                    content_sha256=digest,
+                    signature_png=signature_png,
+                    font_path=font_path,
+                )
+                _stamp_audit(
+                    document,
+                    case_reference=certificate.case_reference,
+                    signed_at=signed_at,
+                    digest=digest,
+                    signer_id=signer_id,
+                    font_path=font_path,
+                )
+                document.save(output_path, garbage=4, deflate=True)
+                file_sha256 = hashlib.sha256(output_path.read_bytes()).hexdigest()
+            except Exception:
+                form_path.unlink(missing_ok=True)
+                output_path.unlink(missing_ok=True)
+                raise
+            return SignedArtifact(
+                content_sha256=digest,
+                file_sha256=file_sha256,
+                signer_verification_id=signer_id,
+                content_path=form_path,
+                total_pages=document.page_count,
+            )
+        finally:
+            document.close()
+
+    def _apply_values(
+        self,
+        document: fitz.Document,
+        values: dict[str, str],
+        rtl_fields: set[str],
+    ) -> list[tuple[int, fitz.Rect, str]]:
+        rtl_paint: list[tuple[int, fitz.Rect, str]] = []
+        for index, page in enumerate(document):
+            for widget in list(page.widgets() or []):
+                if widget.field_name not in values:
+                    widget.field_flags = int(widget.field_flags or 0) | _READ_ONLY
+                    widget.update()
+                    continue
+                value = values[widget.field_name]
+                rtl = widget.field_name in rtl_fields or contains_hebrew(value)
+                _write_widget(widget, value, rtl)
+                if rtl:
+                    rtl_paint.append((index, fitz.Rect(widget.rect), value))
+        return rtl_paint
+
+    def render_preview(
+        self,
+        *,
+        template_path: Path,
+        values: dict[str, str],
+        rtl_fields: set[str],
+    ) -> bytes:
+        missing = _missing_fields(template_path, set(values))
+        if missing:
+            names = ", ".join(sorted(missing))
+            raise UnprocessableError(f"The template is missing form fields: {names}.")
+        font_path = self._resolved_font()
+        if rtl_fields and font_path is None:
+            raise UnprocessableError("A Hebrew font is required before this form can be flattened.")
+        document = fitz.open(template_path)
+        try:
+            rtl_paint = self._apply_values(document, values, rtl_fields)
+            document.bake(annots=True, widgets=True)
+            for index, rect, value in rtl_paint:
+                _paint_rtl(document[index], rect, value, font_path)
+            for page in document:
+                _draft_mark(page)
+            return document.tobytes(garbage=4, deflate=True)
         finally:
             document.close()
 
@@ -174,30 +245,58 @@ def _paint_html(page, inner, value: str, font_path: Path | None) -> None:
     page.insert_htmlbox(inner, markup, **kwargs)
 
 
-def _stamp_audit(document, *, case_id: str, digest: str, signer_id: str, font_path: Path | None) -> None:
-    utc = datetime.now(timezone.utc)
-    local = utc.astimezone(_ISRAEL)
-    banner = (
-        f"Case {case_id}  |  UTC {utc:%Y-%m-%d %H:%M}  |  Israel {local:%Y-%m-%d %H:%M}  |  "
-        f"Signer {signer_id}\nSHA-256 {digest}"
+def _draft_mark(page) -> None:
+    page.draw_line(
+        fitz.Point(48, page.rect.height - 48),
+        fitz.Point(page.rect.width - 48, 48),
+        color=(0.72, 0.18, 0.16),
+        width=1.4,
     )
-    for page in document:
+    pivot = fitz.Point(72, page.rect.height * 0.72)
+    page.insert_text(
+        pivot,
+        "DRAFT - NOT SIGNED",
+        fontsize=22,
+        color=(0.72, 0.18, 0.16),
+        morph=(pivot, fitz.Matrix(32)),
+        overlay=True,
+    )
+
+
+def _stamp_audit(
+    document,
+    *,
+    case_reference: str,
+    signed_at: datetime,
+    digest: str,
+    signer_id: str,
+    font_path: Path | None,
+) -> None:
+    utc, local = format_times(signed_at)
+    total = document.page_count
+    for index, page in enumerate(document, start=1):
+        banner = (
+            f"Ref {case_reference} | UTC {utc} | Israel {local} | Signer {signer_id} | "
+            f"Page {index} of {total}\nContent SHA-256 {digest}"
+        )
         fontname = _embed(page, font_path) if font_path is not None else "helv"
-        top = page.rect.height - 22
+        top = page.rect.height - 34
         page.draw_line(
             fitz.Point(28, top - 2),
             fitz.Point(page.rect.width - 28, top - 2),
             color=(0.75, 0.72, 0.66),
             width=0.4,
         )
-        page.insert_textbox(
-            fitz.Rect(24, top, page.rect.width - 24, page.rect.height - 2),
+        spare = page.insert_textbox(
+            fitz.Rect(24, top, page.rect.width - 24, page.rect.height - 4),
             banner,
             fontname=fontname,
             fontsize=6,
             align=fitz.TEXT_ALIGN_CENTER,
             color=(0.42, 0.4, 0.36),
         )
+        if isinstance(spare, str) or spare < 0:
+            raise UnprocessableError("The audit footer did not fit.")
 
 
 def _embed(page, font_path: Path) -> str:

@@ -13,7 +13,7 @@ export function ChatPanel({
   liveReply,
   onSend,
 }: {
-  workspace: CaseWorkspace;
+  workspace: Pick<CaseWorkspace, "messages" | "missing_fields">;
   busy: boolean;
   liveReply: string | null;
   onSend: (message: string) => Promise<void>;
@@ -49,6 +49,7 @@ export function ChatPanel({
         {workspace.messages.map((message, index) => (
           <p
             key={`${message.created_at}-${index}`}
+            dir="auto"
             className={
               message.role === "assistant"
                 ? "text-sm leading-6"
@@ -58,8 +59,16 @@ export function ChatPanel({
             {message.content}
           </p>
         ))}
-        {pending ? <p className="ms-8 rounded-md bg-white px-3 py-2 text-sm leading-6">{pending}</p> : null}
-        {liveReply !== null ? <p className="text-sm leading-6">{liveReply || "…"}</p> : null}
+        {pending ? (
+          <p dir="auto" className="ms-8 rounded-md bg-white px-3 py-2 text-sm leading-6">
+            {pending}
+          </p>
+        ) : null}
+        {liveReply !== null ? (
+          <p dir="auto" className="text-sm leading-6">
+            {liveReply || "…"}
+          </p>
+        ) : null}
         <div ref={end} />
       </div>
       {workspace.missing_fields.length > 0 ? (
@@ -75,6 +84,7 @@ export function ChatPanel({
       )}
       <form onSubmit={submit} className="border-t border-line p-3">
         <Textarea
+          dir="auto"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder="Answer the clerk"

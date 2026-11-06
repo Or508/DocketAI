@@ -5,23 +5,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { documentFileUrl } from "@/lib/api";
 
-export function PdfPreview({ caseId, workspace }: { caseId: string; workspace: CaseWorkspace }) {
-  const files = useMemo(() => previewFiles(workspace), [workspace]);
-  const [selected, setSelected] = useState("");
+export function PdfCanvas({ url, refreshKey = "" }: { url: string; refreshKey?: string }) {
   const host = useRef<HTMLDivElement>(null);
   const [note, setNote] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!files.some((file) => file.id === selected)) {
-      setSelected(files[0]?.id ?? "");
-    }
-  }, [files, selected]);
 
   useEffect(() => {
     const node = host.current;
     if (!node) return;
     node.replaceChildren();
-    if (!selected) {
+    if (!url) {
       setNote(null);
       return;
     }
@@ -31,7 +23,7 @@ export function PdfPreview({ caseId, workspace }: { caseId: string; workspace: C
       try {
         const pdfjs = await import("pdfjs-dist");
         pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-        const response = await fetch(documentFileUrl(caseId, selected));
+        const response = await fetch(url);
         if (!response.ok) throw new Error("The preview could not be loaded.");
         const data = new Uint8Array(await response.arrayBuffer());
         const pdf = await pdfjs.getDocument({ data }).promise;
@@ -55,7 +47,25 @@ export function PdfPreview({ caseId, workspace }: { caseId: string; workspace: C
     return () => {
       cancelled = true;
     };
-  }, [caseId, selected]);
+  }, [url, refreshKey]);
+
+  return (
+    <>
+      {note ? <p className="mb-3 text-sm text-clay">{note}</p> : null}
+      <div ref={host} />
+    </>
+  );
+}
+
+export function PdfPreview({ caseId, workspace }: { caseId: string; workspace: CaseWorkspace }) {
+  const files = useMemo(() => previewFiles(workspace), [workspace]);
+  const [selected, setSelected] = useState("");
+
+  useEffect(() => {
+    if (!files.some((file) => file.id === selected)) {
+      setSelected(files[0]?.id ?? "");
+    }
+  }, [files, selected]);
 
   return (
     <section className="rounded-lg border border-line bg-white/80 shadow-card">
@@ -83,8 +93,7 @@ export function PdfPreview({ caseId, workspace }: { caseId: string; workspace: C
         {files.length === 0 ? (
           <p className="text-sm text-mist">Upload a PDF to preview it beside the clerk.</p>
         ) : null}
-        {note ? <p className="mb-3 text-sm text-clay">{note}</p> : null}
-        <div ref={host} />
+        <PdfCanvas url={selected ? documentFileUrl(caseId, selected) : ""} />
       </div>
     </section>
   );

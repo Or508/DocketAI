@@ -1,17 +1,28 @@
 import logging
 import re
 import uuid
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+
+import fitz
 
 from fastapi import UploadFile
 from pydantic import TypeAdapter
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.container import Container
 from app.core.exceptions import BadRequestError, ConflictError, NotFoundError, ProcessingError
 from app.core.time import utcnow
+from app.domain.certificate import (
+    OFFICE_CONSENT_TEXT,
+    PORTAL_CONSENT_TEXT,
+    CertificateData,
+    SignerContext,
+)
 from app.domain.documents import DocumentView
 from app.domain.enums import (
     AuditAction,
@@ -20,23 +31,32 @@ from app.domain.enums import (
     DocumentStatus,
 )
 from app.domain.readiness import signing_blockers
+from app.domain.signing_links import as_utc
 from app.domain.text_layout import contains_hebrew
 from app.models.audit_log import AuditLog
 from app.models.case import Case
 from app.models.document import Document
 from app.models.process_definition import ProcessDefinition
-from app.schemas.case import CaseCreate, CaseRead
+from app.models.signing_link import SigningLink
+from app.schemas.case import CaseAudit, CaseCertificate, CaseCreate, CaseRead
 from app.schemas.chat import ChatMessageRead, ChatRequest, FieldUpdateRequest
 from app.schemas.gap import FillAndSignRequest, GapReport, ManualClassifyRequest, PipelineProgress
 from app.schemas.process import DocumentTypeSpec, FieldSpec, ProcessRead
 from app.schemas.workspace import CaseWorkspace, FileRejection, UploadResult
-from app.services.chat_collector import OPENING
+from app.services.chat_collector import OPENING, ChatTurn
 from app.services.field_validator import missing_required_fields, validate_field
-from app.services.pdf_filler import decode_signature_png
+from app.services.pdf_filler import SignedArtifact, decode_signature_png
+from app.services.storage_paths import resolve_stored, storage_relative
 from app.services.structural_excerpt import anchors_from_text, structural_signature
 from app.services.uploads import store_upload
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ChatStart:
+    turn: ChatTurn
+    stamp: str
 
 _DOCUMENT_ADAPTER = TypeAdapter(list[DocumentTypeSpec])
 _FIELD_ADAPTER = TypeAdapter(list[FieldSpec])
@@ -131,11 +151,15 @@ class CaseService:
                 continue
             known_hashes.add(stored.content_hash)
             created_paths.append(Path(stored.storage_path))
+            relative_path = storage_relative(
+                self.container.settings.resolved_storage_dir,
+                Path(stored.storage_path),
+            )
             self.session.add(
                 Document(
                     case_id=case.id,
                     original_filename=stored.original_filename,
-                    storage_path=stored.storage_path,
+                    storage_path=relative_path,
                     mime_type=stored.mime_type,
                     file_size=stored.file_size,
                     content_hash=stored.content_hash,
@@ -147,6 +171,7 @@ class CaseService:
 
         try:
             if accepted:
+                self._invalidate_signature(case, reason="A new file was uploaded after signing.")
                 case.status = CaseStatus.PROCESSING
                 case.pipeline_stage = "parsing"
                 case.pipeline_message = "Parsing"
@@ -312,30 +337,103 @@ class CaseService:
         return self._workspace(case)
 
     async def chat(self, case_id: uuid.UUID, payload: ChatRequest) -> CaseWorkspace:
+        await self.chat_begin(case_id, payload)
+        case = await self._get_case(case_id)
+        return self._workspace(case)
+
+    async def chat_begin(
+        self,
+        case_id: uuid.UUID,
+        payload: ChatRequest,
+        *,
+        reject_if_signed: bool = False,
+    ) -> ChatStart:
         case = await self._get_case(case_id)
         fields = _field_specs(case.process_definition)
-        values, reply = await self.container.chat.respond(
-            fields=fields,
-            values={str(key): str(value) for key, value in (case.field_values or {}).items()},
-            message=payload.message.strip(),
-        )
-        changed = values != (case.field_values or {})
-        case.field_values = values
-        if changed and case.status == CaseStatus.SIGNED:
-            self._clear_signed_output(case)
+        values = {str(key): str(value) for key, value in (case.field_values or {}).items()}
+        message = payload.message.strip()
+        await self.session.commit()
+        turn = await self.container.chat.respond(fields=fields, values=values, message=message)
+        stamp = await self._commit_chat_turn(case_id, message, turn, reject_if_signed=reject_if_signed)
+        return ChatStart(turn=turn, stamp=stamp)
+
+    async def chat_finish(
+        self,
+        case_id: uuid.UUID,
+        stamp: str,
+        draft: str,
+        final: str,
+    ) -> CaseWorkspace:
+        case = await self._locked_case(case_id)
+        if case is None:
+            raise NotFoundError("Case not found.")
+        if final != draft:
+            history = [dict(item) for item in list(case.chat_history or [])]
+            for item in reversed(history):
+                if (
+                    item.get("role") == "assistant"
+                    and item.get("created_at") == stamp
+                    and item.get("content") == draft
+                ):
+                    item["content"] = final
+                    case.chat_history = history
+                    case.updated_at = utcnow()
+                    await self.session.commit()
+                    break
+        stored = await self._get_case(case_id)
+        return self._workspace(stored)
+
+    async def _commit_chat_turn(
+        self,
+        case_id: uuid.UUID,
+        message: str,
+        turn: ChatTurn,
+        *,
+        reject_if_signed: bool = False,
+    ) -> str:
+        case = await self._locked_case(case_id)
+        if case is None:
+            raise NotFoundError("Case not found.")
+        if reject_if_signed and case.status == CaseStatus.SIGNED:
+            raise ConflictError("This form is already signed.")
+        current = {str(key): str(value) for key, value in (case.field_values or {}).items()}
+        merged = dict(current)
+        merged.update(turn.values)
+        if merged != current and case.status == CaseStatus.SIGNED:
+            self._invalidate_signature(case, reason="A field changed after signing.")
             case.status = CaseStatus.FILLING
+        case.field_values = merged
+        self._mark_data_completion(case)
         history = list(case.chat_history or [])
         stamp = utcnow().isoformat()
-        history.append({"role": "user", "content": payload.message.strip(), "created_at": stamp})
-        history.append({"role": "assistant", "content": reply, "created_at": stamp})
+        history.append({"role": "user", "content": message, "created_at": stamp})
+        history.append({"role": "assistant", "content": turn.reply, "created_at": stamp})
         case.chat_history = history[-100:]
         self._refresh_pipeline(case)
         case.updated_at = utcnow()
         await self.session.commit()
-        return self._workspace(case)
+        return stamp
 
-    async def set_field(self, case_id: uuid.UUID, payload: FieldUpdateRequest) -> CaseWorkspace:
+    async def _locked_case(self, case_id: uuid.UUID) -> Case | None:
+        stmt = (
+            select(Case)
+            .where(Case.id == case_id)
+            .options(selectinload(Case.documents), selectinload(Case.process_definition))
+            .execution_options(populate_existing=True)
+            .with_for_update()
+        )
+        return await self.session.scalar(stmt)
+
+    async def set_field(
+        self,
+        case_id: uuid.UUID,
+        payload: FieldUpdateRequest,
+        *,
+        reject_if_signed: bool = False,
+    ) -> CaseWorkspace:
         case = await self._get_case(case_id)
+        if reject_if_signed and case.status == CaseStatus.SIGNED:
+            raise ConflictError("This form is already signed.")
         fields = _field_specs(case.process_definition)
         spec = next((item for item in fields if item.key == payload.key), None)
         if spec is None:
@@ -346,16 +444,35 @@ class CaseService:
         merged = {str(key): str(value) for key, value in (case.field_values or {}).items()}
         merged[spec.key] = result.normalized
         if merged != (case.field_values or {}) and case.status == CaseStatus.SIGNED:
-            self._clear_signed_output(case)
+            self._invalidate_signature(case, reason="A field changed after signing.")
             case.status = CaseStatus.FILLING
         case.field_values = merged
+        self._mark_data_completion(case)
         self._refresh_pipeline(case)
         case.updated_at = utcnow()
         await self.session.commit()
         return self._workspace(case)
 
-    async def fill_and_sign(self, case_id: uuid.UUID, payload: FillAndSignRequest) -> CaseWorkspace:
+    async def fill_and_sign(
+        self,
+        case_id: uuid.UUID,
+        payload: FillAndSignRequest,
+        context: SignerContext,
+    ) -> CaseWorkspace:
         case = await self._get_case(case_id)
+        return await self._sign_case(case, payload, actor="user", context=context)
+
+    async def _sign_case(
+        self,
+        case: Case,
+        payload: FillAndSignRequest,
+        *,
+        actor: str,
+        context: SignerContext,
+        before_fill: Callable[[], Awaitable[None]] | None = None,
+        after_sign: Callable[[SignedArtifact], Awaitable[dict[str, object] | None]] | None = None,
+        link_issued_at: datetime | None = None,
+    ) -> CaseWorkspace:
         fields = _field_specs(case.process_definition)
         by_key = {item.key: item for item in fields}
         merged = {str(key): str(value) for key, value in (case.field_values or {}).items()}
@@ -399,6 +516,30 @@ class CaseService:
             / "signed"
             / f"{_safe_stem(case.name)}-signed.pdf"
         )
+        form_path = output.with_name(output.stem + "-form.pdf")
+        case.field_values = merged
+        self._mark_data_completion(case)
+        if before_fill is not None:
+            await before_fill()
+        signed_at = utcnow()
+        if not (case.case_reference or "").strip():
+            case.case_reference = "DK-" + uuid.uuid4().hex[:12].upper()
+        signer_id = f"DV-{uuid.uuid4().hex[:12].upper()}"
+        consent = PORTAL_CONSENT_TEXT if context.channel == "portal" else OFFICE_CONSENT_TEXT
+        certificate = CertificateData(
+            document_title=case.process_definition.name,
+            case_reference=case.case_reference,
+            client_name=case.client_name,
+            signer_verification_id=signer_id,
+            channel=context.channel,
+            ip=context.ip,
+            user_agent=context.user_agent,
+            consent_text=consent,
+            created_at=as_utc(case.created_at) or signed_at,
+            data_completed_at=as_utc(case.data_completed_at),
+            link_issued_at=as_utc(link_issued_at) if link_issued_at is not None else None,
+            signed_at=signed_at,
+        )
         output.unlink(missing_ok=True)
         try:
             artifact = self.container.pdf_filler.fill_and_sign(
@@ -409,43 +550,80 @@ class CaseService:
                 signature_rect=[float(item) for item in rect],
                 page_index=int(layout.get("page_index", 0)),
                 rtl_fields=rtl_fields,
-                case_id=str(case.id),
+                certificate=certificate,
+                signed_at=signed_at,
             )
-            case.field_values = merged
-            case.output_path = str(output)
+            case.output_path = storage_relative(self.container.settings.resolved_storage_dir, output)
+            case.content_path = storage_relative(
+                self.container.settings.resolved_storage_dir, artifact.content_path
+            )
             case.content_sha256 = artifact.content_sha256
+            case.file_sha256 = artifact.file_sha256
             case.signer_verification_id = artifact.signer_verification_id
+            case.signed_at = signed_at
+            case.certificate_data = CaseCertificate(
+                case_reference=case.case_reference,
+                channel=context.channel,
+                signer_ip=context.ip,
+                signer_user_agent=context.user_agent,
+                consent_text=consent,
+                created_at=certificate.created_at,
+                data_completed_at=certificate.data_completed_at,
+                link_issued_at=certificate.link_issued_at,
+                signed_at=signed_at,
+                total_pages=artifact.total_pages,
+            ).model_dump(mode="json")
             case.status = CaseStatus.SIGNED
             case.pipeline_stage = "signed"
             case.pipeline_message = "Signed packet is ready."
             case.updated_at = utcnow()
+            if actor == "user":
+                await self.session.execute(
+                    update(SigningLink)
+                    .where(
+                        SigningLink.case_id == case.id,
+                        SigningLink.revoked_at.is_(None),
+                        SigningLink.completed_at.is_(None),
+                    )
+                    .values(revoked_at=utcnow(), revoke_reason="signed_by_office")
+                )
+            extra = await after_sign(artifact) if after_sign is not None else None
+            recorded = {
+                "output_path": case.output_path,
+                "fields": sorted(pdf_values),
+                "content_sha256": artifact.content_sha256,
+                "file_sha256": artifact.file_sha256,
+                "signer_verification_id": artifact.signer_verification_id,
+                "ip": context.ip,
+                "user_agent": context.user_agent,
+                "channel": context.channel,
+                "case_reference": case.case_reference,
+            }
+            if extra:
+                recorded.update(extra)
             self.session.add(
                 AuditLog(
                     case_id=case.id,
                     action=AuditAction.FILL_AND_SIGN,
-                    actor="user",
-                    new_value={
-                        "output_path": case.output_path,
-                        "fields": sorted(pdf_values),
-                        "content_sha256": artifact.content_sha256,
-                        "signer_verification_id": artifact.signer_verification_id,
-                    },
+                    actor=actor,
+                    new_value=recorded,
                 )
             )
             await self.session.commit()
         except Exception:
             output.unlink(missing_ok=True)
+            form_path.unlink(missing_ok=True)
             await self.session.rollback()
             raise
-        stored = await self._get_case(case_id)
+        stored = await self._get_case(case.id)
         return self._workspace(stored)
 
     async def signed_pdf(self, case_id: uuid.UUID) -> Path:
         case = await self._get_case(case_id)
         if case.status != CaseStatus.SIGNED or not case.output_path:
             raise NotFoundError("This case has no signed document yet.")
-        path = Path(case.output_path).resolve()
         root = self.container.settings.resolved_storage_dir.resolve()
+        path = resolve_stored(root, case.output_path)
         try:
             path.relative_to(root)
         except ValueError as exc:
@@ -454,13 +632,39 @@ class CaseService:
             raise NotFoundError("The signed document file is missing.")
         return path
 
+    async def certificate_pdf(self, case_id: uuid.UUID) -> bytes:
+        case = await self._get_case(case_id)
+        if case.status != CaseStatus.SIGNED or not case.output_path or not case.certificate_data:
+            raise NotFoundError("This case has no certificate.")
+        path = await self.signed_pdf(case_id)
+        document = fitz.open(path)
+        try:
+            if document.page_count < 1:
+                raise NotFoundError("This case has no certificate.")
+            single = fitz.open()
+            try:
+                single.insert_pdf(document, from_page=document.page_count - 1, to_page=document.page_count - 1)
+                return single.tobytes()
+            finally:
+                single.close()
+        finally:
+            document.close()
+
+    def _mark_data_completion(self, case: Case) -> None:
+        fields = _field_specs(case.process_definition)
+        values = {str(key): str(value) for key, value in (case.field_values or {}).items()}
+        if missing_required_fields(fields, values):
+            case.data_completed_at = None
+        elif case.data_completed_at is None:
+            case.data_completed_at = utcnow()
+
     async def document_file(self, case_id: uuid.UUID, document_id: uuid.UUID) -> tuple[Path, str, str]:
         case = await self._get_case(case_id)
         document = next((item for item in case.documents if item.id == document_id), None)
         if document is None:
             raise NotFoundError("Document not found on this case.")
-        path = Path(document.storage_path).resolve()
         root = self.container.settings.resolved_storage_dir.resolve()
+        path = resolve_stored(root, document.storage_path)
         try:
             path.relative_to(root)
         except ValueError as exc:
@@ -505,6 +709,7 @@ class CaseService:
             missing_fields=missing_required_fields(fields, values),
             ready_to_sign=not blockers,
             signing_blockers=blockers,
+            consent_text=OFFICE_CONSENT_TEXT,
         )
 
     def _gap(self, case: Case) -> GapReport:
@@ -607,14 +812,69 @@ class CaseService:
             download_ready=case.status == CaseStatus.SIGNED and bool(case.output_path),
             created_at=case.created_at,
             updated_at=case.updated_at,
+            audit=self._audit(case),
         )
 
-    def _clear_signed_output(self, case: Case) -> None:
+    def _audit(self, case: Case) -> CaseAudit:
+        signed = case.status == CaseStatus.SIGNED and bool(case.output_path)
+        if not signed:
+            return CaseAudit(
+                is_signed=False,
+                signed_at=None,
+                signer_verification_id=None,
+                content_sha256=None,
+                file_sha256=None,
+                certificate=None,
+            )
+        signed_at = case.signed_at
+        if signed_at is not None and signed_at.tzinfo is None:
+            signed_at = signed_at.replace(tzinfo=timezone.utc)
+        certificate = None
+        if case.certificate_data:
+            certificate = CaseCertificate.model_validate(case.certificate_data)
+        return CaseAudit(
+            is_signed=True,
+            signed_at=signed_at,
+            signer_verification_id=case.signer_verification_id,
+            content_sha256=case.content_sha256,
+            file_sha256=case.file_sha256,
+            certificate=certificate,
+        )
+
+    def _invalidate_signature(self, case: Case, *, reason: str) -> None:
+        previous = {
+            "signer_verification_id": case.signer_verification_id,
+            "content_sha256": case.content_sha256,
+            "file_sha256": case.file_sha256,
+            "output_path": case.output_path,
+            "signed_at": case.signed_at.isoformat() if case.signed_at else None,
+        }
+        if not any(previous.values()):
+            case.signed_at = None
+            return
+        previous["case_reference"] = case.case_reference
         if case.output_path:
-            Path(case.output_path).unlink(missing_ok=True)
-            case.output_path = None
+            path = resolve_stored(self.container.settings.resolved_storage_dir, case.output_path)
+            path.unlink(missing_ok=True)
+        if case.content_path:
+            form = resolve_stored(self.container.settings.resolved_storage_dir, case.content_path)
+            form.unlink(missing_ok=True)
+        case.output_path = None
+        case.content_path = None
+        case.certificate_data = None
         case.content_sha256 = None
+        case.file_sha256 = None
         case.signer_verification_id = None
+        case.signed_at = None
+        self.session.add(
+            AuditLog(
+                case_id=case.id,
+                action=AuditAction.SIGNATURE_INVALIDATED,
+                actor="user",
+                previous_value=previous,
+                notes=reason,
+            )
+        )
 
 
 def _document_specs(process: ProcessDefinition) -> tuple[list[DocumentTypeSpec], list[DocumentTypeSpec]]:

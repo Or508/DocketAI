@@ -76,3 +76,4 @@ class ManualClassifyRequest(BaseModel):
 class FillAndSignRequest(BaseModel):
     field_values: dict[str, str] = Field(default_factory=dict)
     signature_png_base64: str = Field(min_length=20, max_length=3_000_000)
+    consent: Literal[True]

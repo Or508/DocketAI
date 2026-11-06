@@ -1,9 +1,9 @@
 import asyncio
-import json
 from uuid import UUID
 
 from app.db.session import session_scope
 from app.models.case import Case
+from app.schemas.events import CaseProgressEvent, StreamError
 
 _TERMINAL = {"awaiting_input", "ready_for_signature", "signed", "failed", "draft"}
 
@@ -14,20 +14,23 @@ async def iter_case_progress(case_id: UUID):
         async with session_scope() as session:
             case = await session.get(Case, case_id)
             if case is None:
-                yield 'event: error\ndata: {"detail":"Case not found."}\n\n'
+                yield f"event: error\ndata: {StreamError(detail='Case not found.').model_dump_json()}\n\n"
                 return
-            payload = {
-                "stage": case.pipeline_stage or "draft",
-                "completed": int(case.pipeline_completed or 0),
-                "total": int(case.pipeline_total or 0),
-                "message": case.pipeline_message or "",
-                "status": case.status.value,
-            }
-        encoded = json.dumps(payload, separators=(",", ":"))
+            stage = case.pipeline_stage or "draft"
+            if stage not in _TERMINAL and stage not in {"parsing", "classifying", "auditing"}:
+                stage = "draft"
+            payload = CaseProgressEvent(
+                stage=stage,  # type: ignore[arg-type]
+                completed=int(case.pipeline_completed or 0),
+                total=int(case.pipeline_total or 0),
+                message=case.pipeline_message or "",
+                status=case.status,
+            )
+        encoded = payload.model_dump_json()
         if encoded != last:
             yield f"event: progress\ndata: {encoded}\n\n"
             last = encoded
-            if payload["stage"] in _TERMINAL:
+            if payload.stage in _TERMINAL:
                 yield "event: done\ndata: {}\n\n"
                 return
         else:

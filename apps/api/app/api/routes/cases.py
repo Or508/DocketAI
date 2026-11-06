@@ -1,17 +1,17 @@
-import asyncio
-import json
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Request, UploadFile
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from app.core.container import Container
+from app.domain.certificate import SignerContext, clean_ip, clean_user_agent
 from app.core.deps import get_case_service, get_container
 from app.schemas.case import CaseCreate, CaseRead
 from app.schemas.chat import ChatRequest, FieldUpdateRequest
 from app.schemas.gap import FillAndSignRequest, GapReport, ManualClassifyRequest
 from app.schemas.workspace import CaseWorkspace, UploadResult
 from app.services.case_service import CaseService
+from app.services.chat_stream import iter_chat_stream
 from app.services.progress_events import iter_case_progress
 from app.workers.queue import enqueue_case_processing
 from app.workers.runner import process_case_job
@@ -93,20 +93,15 @@ async def chat_stream(
     case_id: UUID,
     payload: ChatRequest,
     service: CaseService = Depends(get_case_service),
+    container: Container = Depends(get_container),
 ) -> StreamingResponse:
-    workspace = await service.chat(case_id, payload)
-    reply = workspace.messages[-1].content if workspace.messages else ""
-
-    async def chunks():
-        step = 18
-        for start in range(0, len(reply), step):
-            yield f"event: delta\ndata: {json.dumps(reply[start:start + step])}\n\n"
-            await asyncio.sleep(0.02)
-        if not reply:
-            yield "event: delta\ndata: \"\"\n\n"
-        yield f"event: workspace\ndata: {workspace.model_dump_json()}\n\n"
-
-    return StreamingResponse(chunks(), media_type="text/event-stream", headers=_STREAM_HEADERS)
+    await service.workspace(case_id)
+    await service.session.commit()
+    return StreamingResponse(
+        iter_chat_stream(case_id, payload, container),
+        media_type="text/event-stream",
+        headers=_STREAM_HEADERS,
+    )
 
 
 @router.post("/{case_id}/fields", response_model=CaseWorkspace)
@@ -122,9 +117,28 @@ async def set_field(
 async def fill_and_sign(
     case_id: UUID,
     payload: FillAndSignRequest,
+    request: Request,
     service: CaseService = Depends(get_case_service),
 ) -> CaseWorkspace:
-    return await service.fill_and_sign(case_id, payload)
+    host = request.client.host if request.client else None
+    context = SignerContext("office", clean_ip(host), clean_user_agent(request.headers.get("user-agent")))
+    return await service.fill_and_sign(case_id, payload, context)
+
+
+@router.get("/{case_id}/certificate")
+async def download_certificate(
+    case_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> Response:
+    data = await service.certificate_pdf(case_id)
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'inline; filename="certificate.pdf"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/{case_id}/documents/{document_id}/file")

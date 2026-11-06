@@ -28,3 +28,6 @@ class AuditAction(str, Enum):
     AUTO_CLASSIFY = "auto_classify"
     MANUAL_CLASSIFY = "manual_classify"
     FILL_AND_SIGN = "fill_and_sign"
+    SIGNATURE_INVALIDATED = "signature_invalidated"
+    SIGNING_LINK_CREATED = "signing_link_created"
+    SIGNING_LINK_REVOKED = "signing_link_revoked"

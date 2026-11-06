@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -22,6 +23,28 @@ class CaseCreate(BaseModel):
         )
 
 
+class CaseCertificate(BaseModel):
+    case_reference: str
+    channel: Literal["portal", "office"]
+    signer_ip: str | None
+    signer_user_agent: str | None
+    consent_text: str
+    created_at: datetime
+    data_completed_at: datetime | None
+    link_issued_at: datetime | None
+    signed_at: datetime
+    total_pages: int
+
+
+class CaseAudit(BaseModel):
+    is_signed: bool
+    signed_at: datetime | None
+    signer_verification_id: str | None
+    content_sha256: str | None
+    file_sha256: str | None
+    certificate: CaseCertificate | None = None
+
+
 class CaseRead(BaseModel):
     id: UUID
     name: str
@@ -33,3 +56,4 @@ class CaseRead(BaseModel):
     download_ready: bool
     created_at: datetime
     updated_at: datetime
+    audit: CaseAudit

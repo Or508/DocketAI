@@ -26,5 +26,15 @@ class UnprocessableError(AppError):
         super().__init__(message, status_code=422, code="unprocessable")
 
 
+class GoneError(AppError):
+    def __init__(self, message: str = "This link is no longer active. Contact the office for a new one.") -> None:
+        super().__init__(message, status_code=410, code="link_unavailable")
+
+
+class RateLimitError(AppError):
+    def __init__(self, message: str = "Too many messages on this link.") -> None:
+        super().__init__(message, status_code=429, code="rate_limited")
+
+
 class ProcessingError(Exception):
     """A file could not be parsed. Stored on the document; not an HTTP error."""

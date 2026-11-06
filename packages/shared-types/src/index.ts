@@ -44,6 +44,28 @@ export interface ProcessRead {
   required_fields: FieldSpec[];
 }
 
+export interface CaseCertificate {
+  case_reference: string;
+  channel: "portal" | "office";
+  signer_ip: string | null;
+  signer_user_agent: string | null;
+  consent_text: string;
+  created_at: string;
+  data_completed_at: string | null;
+  link_issued_at: string | null;
+  signed_at: string;
+  total_pages: number;
+}
+
+export interface CaseAudit {
+  is_signed: boolean;
+  signed_at: string | null;
+  signer_verification_id: string | null;
+  content_sha256: string | null;
+  file_sha256: string | null;
+  certificate: CaseCertificate | null;
+}
+
 export interface CaseRead {
   id: string;
   name: string;
@@ -55,6 +77,7 @@ export interface CaseRead {
   download_ready: boolean;
   created_at: string;
   updated_at: string;
+  audit: CaseAudit;
 }
 
 export interface IdentifiedDocument {
@@ -123,6 +146,65 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export interface FieldUpdateRequest {
+  key: string;
+  value: string;
+}
+
+export interface ChatRequest {
+  message: string;
+}
+
+export interface CaseProgressEvent {
+  stage: PipelineStage;
+  completed: number;
+  total: number;
+  message: string;
+  status: CaseStatus;
+}
+
+export interface StreamError {
+  detail: string;
+}
+
+export interface SigningLinkRead {
+  state: "open" | "completed" | "unavailable";
+  created_at: string;
+  expires_at: string;
+}
+
+export interface SigningLinkCreated {
+  url: string;
+  expires_at: string;
+}
+
+export interface PortalProcess {
+  name: string;
+  required_fields: FieldSpec[];
+}
+
+export interface PortalView {
+  state: "open" | "completed";
+  process: PortalProcess;
+  client_name: string | null;
+  messages: ChatMessage[];
+  field_values: Record<string, string>;
+  missing_fields: FieldSpec[];
+  ready_to_sign: boolean;
+  waiting_on_office: boolean;
+  review_digest: string | null;
+  expires_at: string;
+  signed_at: string | null;
+  download_expires_at: string | null;
+  consent_text: string;
+}
+
+export interface PortalSignRequest {
+  signature_png_base64: string;
+  review_digest: string;
+  consent: true;
+}
+
 export interface CaseWorkspace {
   case: CaseRead;
   gap: GapReport;
@@ -132,7 +214,14 @@ export interface CaseWorkspace {
   missing_fields: FieldSpec[];
   ready_to_sign: boolean;
   signing_blockers: string[];
+  consent_text: string;
 }
+
+export type ChatStreamEvent =
+  | { event: "delta"; data: string }
+  | { event: "replace"; data: string }
+  | { event: "workspace"; data: CaseWorkspace }
+  | { event: "error"; data: StreamError };
 
 export interface FileRejection {
   filename: string;

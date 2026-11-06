@@ -1,4 +1,5 @@
 import base64
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -108,6 +109,10 @@ def test_case_flow_from_upload_to_signed_pdf(client: TestClient, tmp_path: Path)
         assert current.status_code == 200, current.text
     assert current is not None
     filled = current.json()
+    streamed = client.post(f"/cases/{case_id}/chat/stream", json={"message": "Nothing new to add"})
+    assert streamed.status_code == 200, streamed.text
+    assert "event: delta" in streamed.text
+    assert "event: workspace" in streamed.text
     assert filled["ready_to_sign"] is True
     assert filled["field_values"]["national_id"] == "123456782"
     assert filled["field_values"]["start_date"] == "2026-11-04"
@@ -115,7 +120,7 @@ def test_case_flow_from_upload_to_signed_pdf(client: TestClient, tmp_path: Path)
 
     signed = client.post(
         f"/cases/{case_id}/fill-and-sign",
-        json={"signature_png_base64": base64.b64encode(_PNG).decode(), "field_values": {}},
+        json={"signature_png_base64": base64.b64encode(_PNG).decode(), "field_values": {}, "consent": True},
     )
     assert signed.status_code == 200, signed.text
     assert signed.json()["case"]["download_ready"] is True
@@ -127,8 +132,15 @@ def test_case_flow_from_upload_to_signed_pdf(client: TestClient, tmp_path: Path)
     signed_text = "\n".join(page.get_text() for page in opened)
     opened.close()
     assert "Dana Cohen" in signed_text
-    assert "SHA-256" in signed_text
-    assert case_id in signed_text
+    audit = signed.json()["case"]["audit"]
+    assert audit["is_signed"] is True
+    assert audit["signer_verification_id"].startswith("DV-")
+    assert audit["content_sha256"] != audit["file_sha256"]
+    assert audit["file_sha256"] == hashlib.sha256(download.content).hexdigest()
+    assert audit["content_sha256"] in signed_text
+    assert "Content SHA-256" in signed_text
+    assert case_id not in signed_text
+    assert audit["certificate"]["case_reference"] in signed_text
     assert "UTC" in signed_text and "Israel" in signed_text
     preview = next(iter(unrecognized.values()))
     source = client.get(f"/cases/{case_id}/documents/{preview}/file")
@@ -138,4 +150,19 @@ def test_case_flow_from_upload_to_signed_pdf(client: TestClient, tmp_path: Path)
     assert status.status_code == 200
     assert status.json()["missing"] == []
     assert status.json()["pipeline"]["stage"] == "signed"
+
+    extra = tmp_path / "extra.pdf"
+    _write_pdf(extra, "another page of the bundle with enough words to be a document")
+    with extra.open("rb") as handle:
+        uploaded = client.post(
+            f"/cases/{case_id}/upload",
+            files=[("files", (extra.name, handle, "application/pdf"))],
+        )
+    assert uploaded.status_code == 200, uploaded.text
+    after = client.get(f"/cases/{case_id}")
+    assert after.status_code == 200
+    assert after.json()["case"]["status"] != "signed"
+    assert after.json()["case"]["audit"]["is_signed"] is False
+    assert after.json()["case"]["audit"]["file_sha256"] is None
+    assert client.get(f"/cases/{case_id}/signed-document").status_code == 404
     assert client.post("/cases", json={"name": "Missing", "process_key": "no-such-process"}).status_code == 404

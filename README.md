@@ -40,7 +40,12 @@ npm install
 npm run dev:web
 ```
 
-The API uses SQLite at `apps/api/data/docketai.db` until `DATABASE_URL` points at Postgres. Copy `.env.example` to `.env` and set `GEMINI_API_KEY` for automatic classification. `docker compose up -d` starts Postgres, Redis, and Qdrant.
+The API uses SQLite at `apps/api/data/docketai.db` until `DATABASE_URL` points at Postgres. Copy `.env.example` to `.env` and set `GEMINI_API_KEY` for automatic classification.
+
+Two Docker modes:
+
+- Host development: `docker compose up -d` starts Postgres, Redis, and Qdrant only. Run the API on the host. If `QUEUE_ENABLED` is false, or it is true and no worker is publishing a health key, the upload is processed in-process. Those in-process jobs are lost if the API restarts.
+- Full stack: stop any API already listening on port 8000, then `docker compose --profile app up -d --build`. This starts the API and the worker as well. The API listens on `127.0.0.1:8000` only, because it has no authentication yet. Postgres here is a separate database, so SQLite cases are not migrated.
 
 ```powershell
 cd apps\api

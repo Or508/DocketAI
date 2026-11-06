@@ -27,7 +27,7 @@ class Settings(BaseSettings):
         f"sqlite+aiosqlite:///{(API_ROOT / 'data' / 'docketai.db').as_posix()}"
     )
     redis_url: str = "redis://localhost:6379/0"
-    queue_enabled: bool = True
+    queue_enabled: bool = False
     qdrant_url: str = "http://localhost:6333"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 768
     confidence_threshold: float = Field(default=0.75, ge=0, le=1)
     auto_create_schema: bool = True
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     log_level: str = "INFO"
     storage_dir: Path | None = None
     template_dir: Path | None = None
@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 25 * 1024 * 1024
     max_files_per_upload: int = 20
     max_vision_pages: int = Field(default=2, ge=1, le=5)
+    chat_stream_idle_timeout_seconds: float = Field(default=20, gt=0)
+    public_web_url: str = "http://localhost:3000"
+    signing_link_ttl_hours: int = 72
+    signing_link_download_hours: int = 168
+    signing_link_max_chat_turns: int = 40
 
     @field_validator("storage_dir", "template_dir", "hebrew_font_path", mode="before")
     @classmethod

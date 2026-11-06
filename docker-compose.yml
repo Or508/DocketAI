@@ -17,8 +17,16 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   qdrant:
     image: qdrant/qdrant:v1.12.5
@@ -27,6 +35,64 @@ services:
     volumes:
       - qdrant:/qdrant/storage
 
+  api:
+    profiles: ["app"]
+    build: ./apps/api
+    environment: &app-env
+      DATABASE_URL: postgresql+asyncpg://docket:docket@postgres:5432/docketai
+      REDIS_URL: redis://redis:6379/0
+      QUEUE_ENABLED: "true"
+      QDRANT_URL: http://qdrant:6333
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-004}
+      STORAGE_DIR: /data/storage
+      AUTO_CREATE_SCHEMA: "true"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
+      SIGNING_LINK_TTL_HOURS: ${SIGNING_LINK_TTL_HOURS:-72}
+      SIGNING_LINK_DOWNLOAD_HOURS: ${SIGNING_LINK_DOWNLOAD_HOURS:-168}
+      SIGNING_LINK_MAX_CHAT_TURNS: ${SIGNING_LINK_MAX_CHAT_TURNS:-40}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - storage:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  worker:
+    profiles: ["app"]
+    build: ./apps/api
+    command: ["arq", "app.workers.tasks.WorkerSettings"]
+    environment: *app-env
+    volumes:
+      - storage:/data
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "arq", "app.workers.tasks.WorkerSettings", "--check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 volumes:
   pgdata:
   qdrant:
+  redisdata:
+  storage:

@@ -20,6 +20,7 @@ class CaseWorkspace(BaseModel):
     missing_fields: list[FieldSpec]
     ready_to_sign: bool
     signing_blockers: list[str]
+    consent_text: str
 
 
 class UploadResult(BaseModel):

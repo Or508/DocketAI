@@ -1,17 +1,19 @@
 "use client";
 
-import type { CaseWorkspace, FieldSpec } from "@docketai/shared-types";
+import type { FieldSpec, ProcessRead } from "@docketai/shared-types";
 import { formatEmail, formatPhone, israeliIdStatus } from "@docketai/shared-types";
 import { useEffect, useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
 
 export function FieldVerification({
-  workspace,
+  process,
+  field_values,
   busy,
   onSave,
 }: {
-  workspace: CaseWorkspace;
+  process: Pick<ProcessRead, "required_fields">;
+  field_values: Record<string, string>;
   busy: boolean;
   onSave: (key: string, value: string) => Promise<void>;
 }) {
@@ -22,19 +24,19 @@ export function FieldVerification({
 
   useEffect(() => {
     const next: Record<string, string> = {};
-    for (const field of workspace.process.required_fields) {
-      const stored = workspace.field_values[field.key] ?? "";
+    for (const field of process.required_fields) {
+      const stored = field_values[field.key] ?? "";
       next[field.key] = field.field_type === "phone" ? formatPhone(stored) : stored;
     }
     setDrafts(next);
-  }, [workspace.field_values, workspace.process.required_fields]);
+  }, [field_values, process.required_fields]);
 
   useEffect(() => {
     const timers: number[] = [];
-    for (const field of workspace.process.required_fields) {
+    for (const field of process.required_fields) {
       const raw = drafts[field.key] ?? "";
       if (!raw.trim()) continue;
-      if (comparable(field, raw) === comparable(field, workspace.field_values[field.key] ?? "")) continue;
+      if (comparable(field, raw) === comparable(field, field_values[field.key] ?? "")) continue;
       if (localProblem(field, raw)) continue;
       timers.push(
         window.setTimeout(() => {
@@ -45,7 +47,7 @@ export function FieldVerification({
     return () => {
       for (const timer of timers) window.clearTimeout(timer);
     };
-  }, [drafts, workspace.field_values, workspace.process.required_fields]);
+  }, [drafts, field_values, process.required_fields]);
 
   function change(field: FieldSpec, value: string) {
     let next = value;
@@ -57,7 +59,7 @@ export function FieldVerification({
 
   async function commit(field: FieldSpec) {
     const raw = drafts[field.key] ?? "";
-    if (comparable(field, raw) === comparable(field, workspace.field_values[field.key] ?? "")) return;
+    if (comparable(field, raw) === comparable(field, field_values[field.key] ?? "")) return;
     const problem = localProblem(field, raw);
     if (problem) {
       setErrors((current) => ({ ...current, [field.key]: problem }));
@@ -74,7 +76,7 @@ export function FieldVerification({
         <h2 className="font-serif text-2xl">Fields on the form</h2>
       </div>
       <div className="space-y-3 px-4 py-4">
-        {workspace.process.required_fields.map((field) => {
+        {process.required_fields.map((field) => {
           const value = drafts[field.key] ?? "";
           const idCheck = field.field_type === "id_number" ? israeliIdStatus(value) : null;
           const hint = errors[field.key] || (idCheck && idCheck.status !== "empty" ? idCheck.message : "");

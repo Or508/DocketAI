@@ -1,13 +1,15 @@
 "use client";
 
-import type { CaseWorkspace } from "@docketai/shared-types";
+import type { CaseProgressEvent, CaseWorkspace } from "@docketai/shared-types";
 import { useCallback, useEffect, useState } from "react";
 
+import { AuditCard } from "@/components/audit-card";
 import { CaseChecklist } from "@/components/case-checklist";
 import { ChatPanel } from "@/components/chat-panel";
 import { FieldVerification } from "@/components/field-verification";
 import { PdfPreview } from "@/components/pdf-preview";
 import { PipelineBanner } from "@/components/pipeline-banner";
+import { SignerLinkCard } from "@/components/signer-link-card";
 import { SigningModal } from "@/components/signing-modal";
 import { StatusPill } from "@/components/status-pill";
 import { Wordmark } from "@/components/wordmark";
@@ -47,8 +49,13 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
     if (!processing) return;
     const source = new EventSource(`${apiBaseUrl}/cases/${caseId}/events`);
     source.addEventListener("progress", (event) => {
-      const pipeline = JSON.parse((event as MessageEvent).data) as CaseWorkspace["gap"]["pipeline"];
-      setWorkspace((current) => (current ? { ...current, gap: { ...current.gap, pipeline } } : current));
+      const progress = JSON.parse((event as MessageEvent).data) as CaseProgressEvent;
+      const { status, ...pipeline } = progress;
+      setWorkspace((current) =>
+        current
+          ? { ...current, case: { ...current.case, status }, gap: { ...current.gap, pipeline } }
+          : current,
+      );
     });
     source.addEventListener("done", () => {
       void refresh().catch(() => undefined);
@@ -152,8 +159,11 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
           />
         </div>
         <div className="space-y-5">
+          <SignerLinkCard caseId={caseId} />
+          <AuditCard caseId={caseId} audit={workspace.case.audit} />
           <FieldVerification
-            workspace={workspace}
+            process={workspace.process}
+            field_values={workspace.field_values}
             busy={busy}
             onSave={async (key, value) => {
               await run(() => api.setField(caseId, key, value));
@@ -166,7 +176,8 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
             onSend={async (message) => {
               setLiveReply("");
               try {
-                await run(() => api.streamChat(caseId, message, setLiveReply));
+                const saved = await run(() => api.streamChat(caseId, message, setLiveReply));
+                if (!saved) void refresh().catch(() => undefined);
               } finally {
                 setLiveReply(null);
               }
@@ -178,6 +189,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
       <SigningModal
         open={signing}
         busy={busy}
+        consentLabel={workspace.consent_text}
         onOpenChange={setSigning}
         onSign={async (png) => {
           const ok = await run(() => api.sign(caseId, png), "The packet is signed.");
