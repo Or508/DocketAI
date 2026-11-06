@@ -9,6 +9,7 @@ __pycache__/
 .ruff_cache/
 *.pyc
 .env
+.env*.local
 *.db
 apps/api/data/
 apps/api/app/assets/templates/*.pdf
