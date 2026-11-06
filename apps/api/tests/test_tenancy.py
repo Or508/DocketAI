@@ -18,7 +18,7 @@ from app.db.session import session_scope
 from app.models.audit_log import AuditLog
 from app.models.case import Case
 from app.models.signing_link import SigningLink
-from tests.support import authenticate
+from tests.support import api_routes, authenticate
 from tests.test_certificate import _PNG
 from tests.test_portal import _auth, _ready, _token
 
@@ -71,7 +71,9 @@ def test_another_organization_gets_404_and_changes_nothing(client: TestClient, t
     headers = {"Authorization": f"Bearer {other['token']}"}
     calls = [
         ("GET", f"/cases/{case_id}", None, None),
+        ("GET", f"/cases/{case_id}/status", None, None),
         ("GET", f"/cases/{case_id}/events", None, None),
+        ("POST", f"/cases/{case_id}/chat", {"message": "hello"}, None),
         ("POST", f"/cases/{case_id}/chat/stream", {"message": "hello"}, None),
         ("POST", f"/cases/{case_id}/upload", None, {"files": ("x.pdf", _TINY_PDF, "application/pdf")}),
         ("POST", f"/cases/{case_id}/classify-manual", {"document_id": document_ids[0], "document_type": "id_copy"}, None),
@@ -87,6 +89,32 @@ def test_another_organization_gets_404_and_changes_nothing(client: TestClient, t
     for method, path, payload, files in calls:
         response = client.request(method, path, json=payload, files=files, headers=headers)
         assert response.status_code == 404, f"{method} {path} -> {response.status_code} {response.text}"
+    assert _snapshot(client, case_id) == before
+
+    # A new case route must be added above, or this fails.
+    called = {
+        (method, path.replace(case_id, "{case_id}").replace(document_ids[0], "{document_id}"))
+        for method, path, _payload, _files in calls
+    }
+    assert {route for route in api_routes(client) if "{case_id}" in route[1]} == called
+
+
+def test_own_case_cannot_reach_another_organizations_document(client: TestClient, tmp_path: Path) -> None:
+    case_id, document_ids = _ready(client, tmp_path)
+    before = _snapshot(client, case_id)
+    other = authenticate(client, organization="Other office", email="other@example.com", set_header=False)
+    headers = {"Authorization": f"Bearer {other['token']}"}
+    own = client.post("/cases", headers=headers, json={"name": "Theirs", "process_key": "onboarding"})
+    assert own.status_code == 201, own.text
+    own_id = own.json()["id"]
+    read = client.get(f"/cases/{own_id}/documents/{document_ids[0]}/file", headers=headers)
+    assert read.status_code == 404, read.text
+    relabel = client.post(
+        f"/cases/{own_id}/classify-manual",
+        headers=headers,
+        json={"document_id": document_ids[0], "document_type": "id_copy"},
+    )
+    assert relabel.status_code == 404, relabel.text
     assert _snapshot(client, case_id) == before
 
 

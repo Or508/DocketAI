@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { OFFICE_COOKIE, officeCookieOptions } from "@/lib/server/office-session";
+import { OFFICE_COOKIE, officeCookieOptions, sameOrigin } from "@/lib/server/office-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,20 +65,8 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   if (!token) {
     return NextResponse.json({ detail: "Sign in required.", code: "unauthenticated" }, { status: 401, headers: { "Cache-Control": "no-store" } });
   }
-  if (request.method === "POST" || request.method === "PUT" || request.method === "PATCH" || request.method === "DELETE") {
-    const origin = request.headers.get("origin");
-    if (origin) {
-      const expected = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
-      let originHost = "";
-      try {
-        originHost = new URL(origin).host;
-      } catch {
-        originHost = "";
-      }
-      if (!expected || originHost !== expected) {
-        return NextResponse.json({ detail: "Forbidden", code: "forbidden" }, { status: 403, headers: { "Cache-Control": "no-store" } });
-      }
-    }
+  if (request.method !== "GET" && request.method !== "HEAD" && !sameOrigin(request)) {
+    return NextResponse.json({ detail: "Forbidden", code: "forbidden" }, { status: 403, headers: { "Cache-Control": "no-store" } });
   }
   const base = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8000";
   const search = new URL(request.url).search;

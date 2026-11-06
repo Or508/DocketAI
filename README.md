@@ -9,7 +9,7 @@ DocketAI takes a bundle of PDFs and scans, classifies each file against a proces
 ![Next.js 15](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
-![Pytest](https://img.shields.io/badge/pytest-64%20passing-0A9EDC?logo=pytest&logoColor=white)
+![Pytest](https://img.shields.io/badge/pytest-65%20passing-0A9EDC?logo=pytest&logoColor=white)
 
 > **Project status:** DocketAI is a working portfolio system, not a hosted product. Office routes require a staff login. The API stays private behind the Next.js proxies. See [Known limitations](#known-limitations-and-roadmap).
 
@@ -247,7 +247,7 @@ After changing a form definition, delete `apps/api/app/assets/templates/*.pdf` s
 
 ## Testing and quality
 
-The API suite has 64 tests across 15 files. It runs on a temporary SQLite database and needs no external services.
+The API suite has 65 tests across 15 files. It runs on a temporary SQLite database and needs no external services.
 
 ```bash
 cd apps/api

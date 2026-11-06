@@ -16,7 +16,7 @@ from app.core.config import get_settings
 from app.db.session import session_scope
 from app.models.user import User
 from app.models.user_session import UserSession
-from tests.support import PASSWORD, authenticate
+from tests.support import PASSWORD, api_routes, authenticate
 
 _FAILURE = {"detail": "Email or password is incorrect.", "code": "unauthenticated"}
 _DOCS = {"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"}
@@ -51,12 +51,9 @@ def _public(path: str) -> bool:
 def test_office_routes_require_a_session(client: TestClient) -> None:
     saved = client.headers.pop("Authorization")
     try:
-        for route in client.app.routes:
-            path = getattr(route, "path", None)
-            methods = getattr(route, "methods", None) or set()
-            if not path or not methods or _public(path):
-                continue
-            method = sorted(methods - {"HEAD", "OPTIONS"})[0]
+        protected = {(method, path) for method, path in api_routes(client) if not _public(path)}
+        assert {("GET", "/cases"), ("GET", "/processes"), ("POST", "/cases/{case_id}/fill-and-sign")} <= protected
+        for method, path in sorted(protected):
             concrete = path.replace("{case_id}", str(uuid4())).replace("{document_id}", str(uuid4()))
             response = client.request(method, concrete)
             assert response.status_code == 401, f"{method} {path} -> {response.status_code} {response.text}"

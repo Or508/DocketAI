@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import secrets
 from datetime import datetime, timedelta
@@ -10,6 +11,7 @@ from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatc
 from app.core.config import Settings
 from app.core.exceptions import UnauthorizedError
 from app.core.time import utcnow
+from app.domain.signing_links import as_utc
 from app.models.user import User
 from app.models.user_session import UserSession
 
@@ -40,16 +42,14 @@ class AuthService:
 
     async def login(self, email: str, password: str) -> tuple[str, datetime, User]:
         normalized = email.strip().lower()
-        user = await self.session.scalar(select(User).where(User.email == normalized))
+        # The row lock stops parallel guesses from each counting only one failure.
+        user = await self.session.scalar(select(User).where(User.email == normalized).with_for_update())
+        # Argon2 is deliberately slow, so it must not run on the event loop.
         if user is None:
-            verify_password(password, _DUMMY_HASH)
+            await asyncio.to_thread(verify_password, password, _DUMMY_HASH)
             raise UnauthorizedError(_LOGIN_ERROR)
-        password_ok = verify_password(password, user.password_hash)
-        locked_until = user.locked_until
-        if locked_until is not None and locked_until.tzinfo is None:
-            from datetime import timezone
-
-            locked_until = locked_until.replace(tzinfo=timezone.utc)
+        password_ok = await asyncio.to_thread(verify_password, password, user.password_hash)
+        locked_until = as_utc(user.locked_until)
         if locked_until is not None and locked_until > utcnow():
             raise UnauthorizedError(_LOGIN_ERROR)
         if not password_ok:
@@ -79,12 +79,7 @@ class AuthService:
         )
         if record is None or record.revoked_at is not None:
             raise UnauthorizedError()
-        expires_at = record.expires_at
-        if expires_at.tzinfo is None:
-            from datetime import timezone
-
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if expires_at <= utcnow():
+        if as_utc(record.expires_at) <= utcnow():
             raise UnauthorizedError()
         user = await self.session.get(User, record.user_id)
         if user is None or not user.is_active:

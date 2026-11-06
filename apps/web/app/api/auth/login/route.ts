@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 
-import { OFFICE_COOKIE, officeCookieOptions } from "@/lib/server/office-session";
+import { OFFICE_COOKIE, officeCookieOptions, sameOrigin } from "@/lib/server/office-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  if (!sameOrigin(request)) {
+    return NextResponse.json({ detail: "Forbidden", code: "forbidden" }, { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
   const base = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8000";
   try {
     const upstream = await fetch(`${base}/auth/login`, {

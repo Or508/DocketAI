@@ -3,6 +3,12 @@ from fastapi.testclient import TestClient
 PASSWORD = "correct-horse-battery"
 
 
+def api_routes(client: TestClient) -> set[tuple[str, str]]:
+    """Read routes from the schema: FastAPI keeps included routers out of app.routes."""
+    paths = client.app.openapi()["paths"]
+    return {(method.upper(), path) for path, operations in paths.items() for method in operations}
+
+
 def create_org_user(
     client: TestClient,
     *,

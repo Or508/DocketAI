@@ -1,12 +1,15 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { OFFICE_COOKIE, officeCookieOptions } from "@/lib/server/office-session";
+import { OFFICE_COOKIE, officeCookieOptions, sameOrigin } from "@/lib/server/office-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+export async function POST(request: Request) {
+  if (!sameOrigin(request)) {
+    return NextResponse.json({ detail: "Forbidden", code: "forbidden" }, { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
   const jar = await cookies();
   const token = jar.get(OFFICE_COOKIE)?.value;
   if (token) {

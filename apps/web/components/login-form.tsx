@@ -7,9 +7,15 @@ import { Input } from "@/components/ui/input";
 
 const FAILURE = "Email or password is incorrect.";
 
+// Parse the way the browser will: it strips tabs and newlines, so "/<tab>/host" is really "//host".
 function safeNext(value: string | null): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/";
-  return value;
+  if (!value) return "/";
+  try {
+    const target = new URL(value, window.location.origin);
+    return target.origin === window.location.origin ? target.href : "/";
+  } catch {
+    return "/";
+  }
 }
 
 export function LoginForm({ nextPath }: { nextPath: string | null }) {
