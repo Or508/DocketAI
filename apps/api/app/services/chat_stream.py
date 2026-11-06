@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.core.container import Container
 from app.db.session import session_scope
+from app.domain.case_scope import CaseScope
 from app.schemas.chat import ChatRequest
 from app.schemas.events import StreamError
 from app.services.case_service import CaseService
@@ -35,13 +36,14 @@ async def iter_chat_stream(
     case_id: UUID,
     payload: ChatRequest,
     container: Container,
+    scope: CaseScope,
     *,
     render: Callable[[CaseService, UUID], Awaitable[BaseModel]] | None = None,
     reject_if_signed: bool = False,
 ) -> AsyncIterator[str]:
     try:
         async with session_scope() as session:
-            start = await CaseService(session, container).chat_begin(
+            start = await CaseService(session, container, scope).chat_begin(
                 case_id,
                 payload,
                 reject_if_signed=reject_if_signed,
@@ -73,7 +75,7 @@ async def iter_chat_stream(
         elif not streamed.strip():
             yield _frame("delta", json.dumps(draft, ensure_ascii=False))
         async with session_scope() as session:
-            service = CaseService(session, container)
+            service = CaseService(session, container, scope)
             workspace = await service.chat_finish(case_id, start.stamp, draft, final)
             frame = workspace if render is None else await render(service, case_id)
         yield _frame("workspace", frame.model_dump_json())

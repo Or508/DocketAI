@@ -10,8 +10,13 @@ pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient
 
+from sqlalchemy import select
+
 from app.db.session import session_scope
+from app.domain.case_scope import CaseScope
 from app.domain.classification import FieldExtraction, FieldHit
+from app.models.case import Case
+from app.models.user import User
 from app.schemas.chat import ChatRequest
 from app.services.case_service import CaseService
 
@@ -33,6 +38,9 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from app.main import app
 
     with TestClient(app) as test_client:
+        from tests.support import authenticate
+
+        authenticate(test_client)
         yield test_client
     reset_db()
     get_settings.cache_clear()
@@ -158,7 +166,14 @@ def test_chat_begin_stores_the_user_message_and_recorded_reply(client: TestClien
 
     async def begin():
         async with session_scope() as session:
-            return await CaseService(session, client.app.state.container).chat_begin(
+            case = await session.get(Case, UUID(case_id))
+            user = await session.scalar(select(User))
+            assert case is not None and user is not None
+            return await CaseService(
+                session,
+                client.app.state.container,
+                CaseScope.office(case.organization_id, user.id),
+            ).chat_begin(
                 UUID(case_id),
                 ChatRequest(message="Dana Cohen"),
             )

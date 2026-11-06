@@ -1,6 +1,8 @@
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, select, text
 
-from app.db.session import get_engine
+from app.db.session import get_engine, session_scope
+from app.models.case import Case
+from app.models.organization import Organization
 
 _CASE_COLUMNS = {
     "signer_verification_id": "VARCHAR(40)",
@@ -31,3 +33,23 @@ def _add_missing_case_columns(sync_conn) -> None:
     for name, ddl in _CASE_COLUMNS.items():
         if name not in existing:
             sync_conn.execute(text(f"ALTER TABLE cases ADD COLUMN {name} {ddl}"))
+    if "organization_id" not in existing:
+        kind = "UUID" if sync_conn.dialect.name == "postgresql" else "CHAR(32)"
+        sync_conn.execute(text(f"ALTER TABLE cases ADD COLUMN organization_id {kind}"))
+
+
+async def ensure_default_organization() -> None:
+    async with session_scope() as session:
+        pending = list(await session.scalars(select(Case).where(Case.organization_id.is_(None))))
+        if not pending:
+            return
+        organization = await session.scalar(
+            select(Organization).where(Organization.name == "Default organization")
+        )
+        if organization is None:
+            organization = Organization(name="Default organization")
+            session.add(organization)
+            await session.flush()
+        for case in pending:
+            case.organization_id = organization.id
+        await session.commit()

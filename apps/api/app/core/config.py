@@ -35,8 +35,10 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 768
     confidence_threshold: float = Field(default=0.75, ge=0, le=1)
     auto_create_schema: bool = True
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     log_level: str = "INFO"
+    session_ttl_hours: int = 12
+    login_max_failures: int = 5
+    login_lock_minutes: int = 15
     storage_dir: Path | None = None
     template_dir: Path | None = None
     hebrew_font_path: Path | None = None
@@ -70,10 +72,6 @@ class Settings(BaseSettings):
     @property
     def resolved_template_dir(self) -> Path:
         return self.template_dir or (API_ROOT / "app" / "assets" / "templates")
-
-    @property
-    def cors_origin_list(self) -> list[str]:
-        return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
 
 
 @lru_cache

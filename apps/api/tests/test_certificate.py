@@ -47,6 +47,9 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from app.main import app
 
     with TestClient(app) as test_client:
+        from tests.support import authenticate
+
+        authenticate(test_client)
         yield test_client
     reset_db()
     get_settings.cache_clear()

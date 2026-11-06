@@ -14,7 +14,8 @@ import { SigningModal } from "@/components/signing-modal";
 import { StatusPill } from "@/components/status-pill";
 import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
-import { ApiError, api, apiBaseUrl, signedDocumentUrl } from "@/lib/api";
+import { OfficeBar } from "@/components/office-bar";
+import { ApiError, api, signedDocumentUrl } from "@/lib/api";
 
 export function CaseWorkspaceView({ caseId }: { caseId: string }) {
   const [workspace, setWorkspace] = useState<CaseWorkspace | null>(null);
@@ -47,7 +48,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
   const processing = workspace?.case.status === "processing" || (workspace?.gap.in_progress.length ?? 0) > 0;
   useEffect(() => {
     if (!processing) return;
-    const source = new EventSource(`${apiBaseUrl}/cases/${caseId}/events`);
+    const source = new EventSource(`/api/office/cases/${caseId}/events`);
     source.addEventListener("progress", (event) => {
       const progress = JSON.parse((event as MessageEvent).data) as CaseProgressEvent;
       const { status, ...pipeline } = progress;
@@ -109,6 +110,9 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-4">
         <div>
           <Wordmark />
+          <div className="mt-3">
+            <OfficeBar />
+          </div>
           <h1 className="mt-4 font-serif text-4xl">{workspace.case.name}</h1>
           <p className="mt-1 text-sm text-mist">
             {workspace.case.client_name ? `${workspace.case.client_name} · ` : ""}

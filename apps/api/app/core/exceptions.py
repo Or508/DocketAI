@@ -6,6 +6,16 @@ class AppError(Exception):
         self.code = code
 
 
+class UnauthorizedError(AppError):
+    def __init__(self, message: str = "Sign in required.") -> None:
+        super().__init__(message, status_code=401, code="unauthenticated")
+
+
+class ForbiddenError(AppError):
+    def __init__(self, message: str = "Forbidden") -> None:
+        super().__init__(message, status_code=403, code="forbidden")
+
+
 class NotFoundError(AppError):
     def __init__(self, message: str = "Not found") -> None:
         super().__init__(message, status_code=404, code="not_found")

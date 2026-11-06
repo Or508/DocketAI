@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
     return [
       { source: "/sign/:path*", headers: privateHeaders },
       { source: "/api/portal/:path*", headers: privateHeaders },
+      { source: "/login", headers: privateHeaders },
+      { source: "/api/office/:path*", headers: privateHeaders },
+      { source: "/api/auth/:path*", headers: privateHeaders },
     ];
   },
 };

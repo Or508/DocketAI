@@ -1,4 +1,5 @@
 import logging
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +34,7 @@ class IngestionPipeline:
         session: AsyncSession,
         document: Document,
         types: list[DocumentTypeSpec],
+        organization_id: UUID,
     ) -> None:
         path = resolve_stored(get_settings().resolved_storage_dir, document.storage_path)
         extraction = await self._processor.extract(path)
@@ -41,7 +43,7 @@ class IngestionPipeline:
         document.error_message = None
         document.updated_at = utcnow()
         anchors = anchors_from_text(extraction.text)
-        examples = await self._learning.similar_examples(embedding_text(anchors))
+        examples = await self._learning.similar_examples(embedding_text(anchors), organization_id)
         result = await self._classifier.classify(
             filename=document.original_filename,
             extraction=extraction,

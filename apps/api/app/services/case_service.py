@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.container import Container
-from app.core.exceptions import BadRequestError, ConflictError, NotFoundError, ProcessingError
+from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError, ProcessingError
 from app.core.time import utcnow
 from app.domain.certificate import (
     OFFICE_CONSENT_TEXT,
@@ -23,6 +23,7 @@ from app.domain.certificate import (
     CertificateData,
     SignerContext,
 )
+from app.domain.case_scope import CaseScope, case_query
 from app.domain.documents import DocumentView
 from app.domain.enums import (
     AuditAction,
@@ -63,13 +64,14 @@ _FIELD_ADAPTER = TypeAdapter(list[FieldSpec])
 
 
 class CaseService:
-    def __init__(self, session: AsyncSession, container: Container) -> None:
+    def __init__(self, session: AsyncSession, container: Container, scope: CaseScope) -> None:
         self.session = session
         self.container = container
+        self.scope = scope
 
     async def list_cases(self) -> list[CaseRead]:
         stmt = (
-            select(Case)
+            case_query(self.scope)
             .options(selectinload(Case.documents), selectinload(Case.process_definition))
             .order_by(Case.created_at.desc())
             .limit(100)
@@ -84,7 +86,10 @@ class CaseService:
         )
         if process is None:
             raise NotFoundError(f"Unknown process '{data.process_key}'.")
+        if self.scope.organization_id is None:
+            raise ForbiddenError("A system scope cannot create cases.")
         case = Case(
+            organization_id=self.scope.organization_id,
             name=data.name,
             client_name=data.client_name,
             process_definition_id=process.id,
@@ -239,7 +244,12 @@ class CaseService:
             document.updated_at = utcnow()
             await self.session.commit()
             try:
-                await self.container.pipeline.process_document(self.session, document, catalog)
+                await self.container.pipeline.process_document(
+                    self.session,
+                    document,
+                    catalog,
+                    organization_id=case.organization_id,
+                )
             except ProcessingError as exc:
                 logger.info("Document %s was not readable: %s", document_id, exc)
                 document.status = DocumentStatus.FAILED
@@ -270,7 +280,7 @@ class CaseService:
             await self.session.rollback()
         except Exception:
             logger.exception("Could not roll back the failed ingestion")
-        case = await self.session.get(Case, case_id)
+        case = await self.session.scalar(case_query(self.scope).where(Case.id == case_id))
         if case is None:
             return
         if case.pipeline_stage in {"signed", "ready_for_signature", "awaiting_input"}:
@@ -317,13 +327,14 @@ class CaseService:
             process_type=case.process_definition.key,
             anchors=anchors,
             structural_signature=structural_signature(anchors) if anchors else "",
+            organization_id=case.organization_id,
         )
         self.session.add(
             AuditLog(
                 case_id=case.id,
                 document_id=document.id,
                 action=AuditAction.MANUAL_CLASSIFY,
-                actor="user",
+                actor=self.scope.actor,
                 previous_value=previous,
                 new_value={"document_type": doc_type, "confidence": 1.0},
                 embedding_point_id=point_id,
@@ -416,7 +427,7 @@ class CaseService:
 
     async def _locked_case(self, case_id: uuid.UUID) -> Case | None:
         stmt = (
-            select(Case)
+            case_query(self.scope)
             .where(Case.id == case_id)
             .options(selectinload(Case.documents), selectinload(Case.process_definition))
             .execution_options(populate_existing=True)
@@ -460,7 +471,7 @@ class CaseService:
         context: SignerContext,
     ) -> CaseWorkspace:
         case = await self._get_case(case_id)
-        return await self._sign_case(case, payload, actor="user", context=context)
+        return await self._sign_case(case, payload, actor=self.scope.actor, context=context)
 
     async def _sign_case(
         self,
@@ -584,7 +595,7 @@ class CaseService:
             case.pipeline_stage = "signed"
             case.pipeline_message = "Signed packet is ready."
             case.updated_at = utcnow()
-            if actor == "user":
+            if context.channel == "office":
                 await self.session.execute(
                     update(SigningLink)
                     .where(
@@ -682,7 +693,7 @@ class CaseService:
 
     async def _get_case(self, case_id: uuid.UUID) -> Case:
         stmt = (
-            select(Case)
+            case_query(self.scope)
             .where(Case.id == case_id)
             .options(
                 selectinload(Case.documents),
@@ -877,7 +888,7 @@ class CaseService:
             AuditLog(
                 case_id=case.id,
                 action=AuditAction.SIGNATURE_INVALIDATED,
-                actor="user",
+                actor=self.scope.actor,
                 previous_value=previous,
                 notes=reason,
             )

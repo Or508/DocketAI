@@ -45,9 +45,14 @@ async def case_status(case_id: UUID, service: CaseService = Depends(get_case_ser
 
 
 @router.get("/{case_id}/events")
-async def case_events(case_id: UUID) -> StreamingResponse:
+async def case_events(
+    case_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> StreamingResponse:
+    await service.workspace(case_id)
+    await service.session.commit()
     return StreamingResponse(
-        iter_case_progress(case_id),
+        iter_case_progress(case_id, service.scope),
         media_type="text/event-stream",
         headers=_STREAM_HEADERS,
     )
@@ -98,7 +103,7 @@ async def chat_stream(
     await service.workspace(case_id)
     await service.session.commit()
     return StreamingResponse(
-        iter_chat_stream(case_id, payload, container),
+        iter_chat_stream(case_id, payload, container, service.scope),
         media_type="text/event-stream",
         headers=_STREAM_HEADERS,
     )
@@ -120,8 +125,11 @@ async def fill_and_sign(
     request: Request,
     service: CaseService = Depends(get_case_service),
 ) -> CaseWorkspace:
-    host = request.client.host if request.client else None
-    context = SignerContext("office", clean_ip(host), clean_user_agent(request.headers.get("user-agent")))
+    reported_ip = request.headers.get("x-office-client-ip")
+    host = reported_ip.strip() if reported_ip and reported_ip.strip() else (request.client.host if request.client else None)
+    reported_agent = request.headers.get("x-office-user-agent")
+    agent = reported_agent if reported_agent and reported_agent.strip() else request.headers.get("user-agent")
+    context = SignerContext("office", clean_ip(host), clean_user_agent(agent))
     return await service.fill_and_sign(case_id, payload, context)
 
 

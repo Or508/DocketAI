@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.container import Container
 from app.core.exceptions import ConflictError, GoneError, NotFoundError, RateLimitError
 from app.core.time import utcnow
+from app.domain.case_scope import CaseScope
 from app.domain.certificate import PORTAL_CONSENT_TEXT, SignerContext
 from app.domain.enums import AuditAction, CaseStatus
 from app.domain.signing_links import as_utc, generate_token, hash_token, link_state, review_digest
@@ -28,10 +29,11 @@ _GONE = "This link is no longer active. Contact the office for a new one."
 
 
 class PortalService:
-    def __init__(self, session: AsyncSession, container: Container) -> None:
+    def __init__(self, session: AsyncSession, container: Container, scope: CaseScope) -> None:
         self.session = session
         self.container = container
-        self.cases = CaseService(session, container)
+        self.scope = scope
+        self.cases = CaseService(session, container, scope)
 
     async def create_link(self, case_id: uuid.UUID) -> SigningLinkCreated:
         case = await self.cases._get_case(case_id)
@@ -65,7 +67,7 @@ class PortalService:
             AuditLog(
                 case_id=case.id,
                 action=AuditAction.SIGNING_LINK_CREATED,
-                actor="user",
+                actor=self.scope.actor,
                 new_value={"expires_at": expires_at.isoformat()},
             )
         )
@@ -92,7 +94,7 @@ class PortalService:
             AuditLog(
                 case_id=case.id,
                 action=AuditAction.SIGNING_LINK_REVOKED,
-                actor="user",
+                actor=self.scope.actor,
                 new_value={"revoke_reason": "office"},
             )
         )

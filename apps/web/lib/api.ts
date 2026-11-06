@@ -10,7 +10,13 @@ import type {
   UploadResult,
 } from "@docketai/shared-types";
 
-const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const base = "/api/office";
+
+function redirectToLogin() {
+  if (typeof window === "undefined") return;
+  const next = `${window.location.pathname}${window.location.search}`;
+  window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+}
 
 export class ApiError extends Error {
   status: number;
@@ -42,6 +48,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
   const response = await fetch(`${base}${path}`, { ...init, headers, cache: "no-store" });
+  if (response.status === 401) redirectToLogin();
   if (!response.ok) {
     let message = response.statusText;
     try {
@@ -117,7 +124,12 @@ async function readChatStream(
   onDelta: (text: string) => void,
 ): Promise<CaseWorkspace> {
   const body: ChatRequest = { message };
-  return readEventStream<CaseWorkspace>(`${base}/cases/${caseId}/chat/stream`, body, onDelta);
+  try {
+    return await readEventStream<CaseWorkspace>(`${base}/cases/${caseId}/chat/stream`, body, onDelta);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) redirectToLogin();
+    throw error;
+  }
 }
 
 export async function readEventStream<T>(
@@ -177,5 +189,3 @@ export async function readEventStream<T>(
   if (!result) throw new ApiError("The clerk did not finish the reply.", 502);
   return result;
 }
-
-export const apiBaseUrl = base;

@@ -9,7 +9,8 @@ import { StatusPill } from "@/components/status-pill";
 import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ApiError, api, apiBaseUrl } from "@/lib/api";
+import { OfficeBar } from "@/components/office-bar";
+import { ApiError, api } from "@/lib/api";
 import { formatWhen } from "@/lib/utils";
 
 export function Dashboard() {
@@ -32,7 +33,7 @@ export function Dashboard() {
         setProcessKey((current) => current || nextProcesses[0]?.key || "");
       })
       .catch((reason: unknown) => {
-        if (!cancelled) setError(reason instanceof ApiError ? reason.message : `Cannot reach ${apiBaseUrl}`);
+        if (!cancelled) setError(reason instanceof ApiError ? reason.message : "Cannot reach the office service.");
       });
     return () => {
       cancelled = true;
@@ -61,6 +62,9 @@ export function Dashboard() {
       <header className="flex items-end justify-between border-b border-line pb-5">
         <div>
           <Wordmark />
+          <div className="mt-3">
+            <OfficeBar />
+          </div>
           <p className="mt-3 max-w-xl text-sm text-mist">
             Open a case, drop in the bundle, and the checklist shows what is identified, missing, or waiting on a person.
           </p>

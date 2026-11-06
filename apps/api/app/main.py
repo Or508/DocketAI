@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import app.models  # noqa: F401
@@ -13,7 +12,7 @@ from app.core.config import get_settings
 from app.core.container import build_container
 from app.core.exceptions import AppError
 from app.db.base import Base
-from app.db.compat import ensure_case_columns
+from app.db.compat import ensure_case_columns, ensure_default_organization
 from app.db.session import get_engine, session_scope
 from app.services.seeding import seed_processes
 
@@ -44,6 +43,7 @@ async def lifespan(app: FastAPI):
         async with get_engine().begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
     await ensure_case_columns()
+    await ensure_default_organization()
     async with session_scope() as session:
         await seed_processes(session)
     yield
@@ -55,14 +55,6 @@ app = FastAPI(
     summary="Document ingestion, gap analysis, conversational form fill, and signing.",
     lifespan=lifespan,
 )
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=get_settings().cors_origin_list,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 @app.exception_handler(AppError)
 async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:

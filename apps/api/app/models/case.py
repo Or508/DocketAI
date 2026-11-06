@@ -14,6 +14,12 @@ class Case(Base):
     __tablename__ = "cases"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=new_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("organizations.id"),
+        index=True,
+        nullable=False,
+    )
     name: Mapped[str] = mapped_column(String(160))
     client_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     process_definition_id: Mapped[uuid.UUID] = mapped_column(

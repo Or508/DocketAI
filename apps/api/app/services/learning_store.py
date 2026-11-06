@@ -29,14 +29,14 @@ class QdrantLearningStore:
     def _enabled(self) -> bool:
         return bool(self._settings.qdrant_url and self._settings.gemini_api_key) and not self._disabled
 
-    async def similar_examples(self, text: str, limit: int = 3) -> list[LabeledExample]:
+    async def similar_examples(self, text: str, organization_id: UUID, limit: int = 3) -> list[LabeledExample]:
         if not self._enabled() or not text.strip():
             return []
         try:
             vector = await self._gemini.embed(text[:4_000])
             import asyncio
 
-            return await asyncio.to_thread(self._search, vector, limit)
+            return await asyncio.to_thread(self._search, vector, limit, organization_id)
         except Exception:
             logger.warning("Similar-example lookup skipped", exc_info=True)
             self._disabled = True
@@ -50,6 +50,7 @@ class QdrantLearningStore:
         process_type: str,
         anchors: list[str],
         structural_signature: str,
+        organization_id: UUID,
     ) -> str | None:
         if not self._enabled():
             return None
@@ -66,6 +67,7 @@ class QdrantLearningStore:
             "structural_signature": structural_signature,
             "anchor_count": len(anchors),
             "excerpt": excerpt,
+            "organization_id": str(organization_id),
         }
         try:
             vector = await self._gemini.embed(excerpt)
@@ -96,17 +98,25 @@ class QdrantLearningStore:
             vectors_config=VectorParams(size=size, distance=Distance.COSINE),
         )
 
-    def _search(self, vector: list[float], limit: int) -> list[LabeledExample]:
+    def _search(self, vector: list[float], limit: int, organization_id: UUID) -> list[LabeledExample]:
+        from qdrant_client.http.models import FieldCondition, Filter, MatchValue
+
         self._ensure_collection(len(vector))
+        query_filter = Filter(
+            must=[FieldCondition(key="organization_id", match=MatchValue(value=str(organization_id)))]
+        )
         response = self._qdrant().query_points(
             collection_name=_COLLECTION,
             query=vector,
             limit=limit,
             score_threshold=0.72,
+            query_filter=query_filter,
         )
         examples: list[LabeledExample] = []
         for point in response.points:
             payload = point.payload or {}
+            if str(payload.get("organization_id") or "") != str(organization_id):
+                continue
             doc_type = str(payload.get("document_type") or payload.get("category_id") or "")
             excerpt = str(payload.get("excerpt") or "")
             if doc_type and excerpt:

@@ -76,13 +76,14 @@ async def portal_chat(
         if current is None:
             raise ConflictError("This link is no longer active.")
         stored = await case_service._get_case(case_id)
-        return PortalService(case_service.session, container).view(current, stored)
+        return PortalService(case_service.session, container, service.scope).view(current, stored)
 
     return StreamingResponse(
         iter_chat_stream(
             case.id,
             payload,
             container,
+            service.scope,
             render=render,
             reject_if_signed=True,
         ),

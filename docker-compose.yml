@@ -48,7 +48,6 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-004}
       STORAGE_DIR: /data/storage
       AUTO_CREATE_SCHEMA: "true"
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
       SIGNING_LINK_TTL_HOURS: ${SIGNING_LINK_TTL_HOURS:-72}

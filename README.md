@@ -9,9 +9,9 @@ DocketAI takes a bundle of PDFs and scans, classifies each file against a proces
 ![Next.js 15](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
-![Pytest](https://img.shields.io/badge/pytest-48%20passing-0A9EDC?logo=pytest&logoColor=white)
+![Pytest](https://img.shields.io/badge/pytest-64%20passing-0A9EDC?logo=pytest&logoColor=white)
 
-> **Project status:** DocketAI is a working portfolio system, not a hosted product. Office routes have no authentication yet, so the API binds to `127.0.0.1` and must stay private. See [Known limitations](#known-limitations-and-roadmap).
+> **Project status:** DocketAI is a working portfolio system, not a hosted product. Office routes require a staff login. The API stays private behind the Next.js proxies. See [Known limitations](#known-limitations-and-roadmap).
 
 ## Contents
 
@@ -41,8 +41,8 @@ DocketAI is a monorepo with a Python API, a Next.js app, and a shared contract p
 ```mermaid
 flowchart LR
     Office["Office browser"] --> Web["Next.js app"]
-    Office -->|"Office REST and SSE"| API["FastAPI API"]
     Signer["Signer browser"] -->|"/sign/token"| Web
+    Web -->|"Office proxy"| API["FastAPI API"]
     Web -->|"Allowlisted /portal proxy"| API
     API --> DB[("PostgreSQL or SQLite")]
     API --> Files[("Document storage")]
@@ -204,9 +204,19 @@ uvicorn app.main:app --reload --port 8000
 
 The API is at `http://localhost:8000`, with interactive docs at `/docs`.
 
+### 3. Create the first staff user
+
+From `apps/api`, with the virtualenv active:
+
+```bash
+python -m app.cli create-user --organization "Default organization" --email "staff@example.com" --display-name "Staff"
+```
+
+The command asks for a password of at least 12 characters. Set `DOCKET_USER_PASSWORD` to supply it without a prompt. Office pages then sign in at `http://localhost:3000/login`.
+
 > **Quick start without Docker:** keep the default `.env`, skip Step 1 and `alembic upgrade head`, and the API creates a local SQLite database by itself. Do not run Alembic against a database created this way unless you first run `alembic stamp head`.
 
-### 3. Start the web app
+### 4. Start the web app
 
 From the repository root:
 
@@ -217,7 +227,7 @@ npm run dev:web
 
 Open `http://localhost:3000`.
 
-### 4. Optional: run a background worker
+### 5. Optional: run a background worker
 
 Set `QUEUE_ENABLED=true` in `.env`, restart the API, and start a worker from `apps/api`:
 
@@ -237,7 +247,7 @@ After changing a form definition, delete `apps/api/app/assets/templates/*.pdf` s
 
 ## Testing and quality
 
-The API suite has 48 tests across 13 files. It runs on a temporary SQLite database and needs no external services.
+The API suite has 64 tests across 15 files. It runs on a temporary SQLite database and needs no external services.
 
 ```bash
 cd apps/api
@@ -264,6 +274,8 @@ npm run build -w web
 | Queue gating | `test_queue.py` |
 | PDF filling, document parsing, file sniffing | `test_pdf_filler.py`, `test_document_processor.py`, `test_file_sniff.py` |
 | Validators, gap analysis, structural excerpts | `test_field_validator.py`, `test_gap_analyzer.py`, `test_structural_excerpt.py` |
+| Staff sessions | `test_auth.py` |
+| Organization isolation | `test_tenancy.py` |
 
 ## Known limitations and roadmap
 
@@ -271,13 +283,15 @@ These are deliberate boundaries of the current version.
 
 | Area | Current state | Planned |
 |---|---|---|
-| Authentication | Office routes are unauthenticated. The API binds to `127.0.0.1`, and only the signer portal has access control. | Staff sessions through a same-origin proxy |
-| Multi-tenancy | Single tenant. The Qdrant label memory is shared across all cases. | Organization-scoped queries, enforced in the data layer |
+| Authentication | Office routes require a staff login. Sessions are httpOnly cookies on the Next.js app, and the API stays private behind that proxy. MFA, password reset, and SSO are not built. | Optional stronger sign-in |
+| Multi-tenancy | Each case belongs to one organization, and Qdrant label search is filtered by that organization. Database row-level security is not built. | Database policies in addition to the application filter |
 | PDF integrity | Changes are detected by comparing with the stored file hash. | Cryptographic PDF seal (PAdES) |
 | Signer identity | Holding the link is the only proof. Identity is not verified. | Optional stronger verification |
 | Storage | Local filesystem | S3-compatible object storage |
 | Data retention | No automatic deletion. Signer IP addresses and browser details are stored. | Configurable retention rules |
 | CI | Checks run locally | GitHub Actions |
+
+The Next.js app must sit behind a reverse proxy that overwrites `X-Forwarded-For`. The office and portal proxies send the rightmost entry of that header to the API as the client address.
 
 **Privacy:** with a Gemini key set, document text and clerk messages are sent to Gemini, and confirmed excerpts are stored in Qdrant. Use synthetic data for demos.
 
