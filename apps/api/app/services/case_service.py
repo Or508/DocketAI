@@ -473,6 +473,13 @@ class CaseService:
         after_sign: Callable[[SignedArtifact], Awaitable[dict[str, object] | None]] | None = None,
         link_issued_at: datetime | None = None,
     ) -> CaseWorkspace:
+        # Lock first so a concurrent signing cannot pass this check and replace the packet.
+        locked = await self._locked_case(case.id)
+        if locked is None:
+            raise NotFoundError("Case not found.")
+        case = locked
+        if case.status == CaseStatus.SIGNED:
+            raise ConflictError("This case is already signed.")
         fields = _field_specs(case.process_definition)
         by_key = {item.key: item for item in fields}
         merged = {str(key): str(value) for key, value in (case.field_values or {}).items()}
@@ -707,7 +714,7 @@ class CaseService:
             messages=[ChatMessageRead.model_validate(item) for item in (case.chat_history or [])],
             field_values=values,
             missing_fields=missing_required_fields(fields, values),
-            ready_to_sign=not blockers,
+            ready_to_sign=not blockers and case.status != CaseStatus.SIGNED,
             signing_blockers=blockers,
             consent_text=OFFICE_CONSENT_TEXT,
         )

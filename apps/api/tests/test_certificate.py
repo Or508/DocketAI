@@ -353,3 +353,48 @@ def test_portal_sign_with_a_real_forwarded_address(client: TestClient, tmp_path:
     assert "SignerProbe/1" in text
     assert "203.0.113.77" not in signed.text
     assert "SignerProbe/1" not in signed.text
+
+
+def test_office_cannot_replace_a_portal_signed_packet(client: TestClient, tmp_path: Path) -> None:
+    case_id = _ready(client, tmp_path, name="Portal first", client_name="Dana Cohen")
+    made = client.post(f"/cases/{case_id}/signing-links")
+    assert made.status_code == 201, made.text
+    headers = {"Authorization": f"Bearer {made.json()['url'].rsplit('/', 1)[1]}"}
+    view = client.get("/portal", headers=headers).json()
+    signed = client.post(
+        "/portal/sign",
+        headers=headers,
+        json={"signature_png_base64": _PNG, "review_digest": view["review_digest"], "consent": True},
+    )
+    assert signed.status_code == 200, signed.text
+    before = client.get(f"/cases/{case_id}").json()
+    assert before["ready_to_sign"] is False
+    packet = client.get("/portal/signed-document", headers=headers).content
+
+    again = _sign_office(client, case_id)
+
+    assert again.status_code == 409, again.text
+    after = client.get(f"/cases/{case_id}").json()["case"]["audit"]
+    assert after == before["case"]["audit"]
+    assert after["certificate"]["channel"] == "portal"
+    download = client.get("/portal/signed-document", headers=headers)
+    assert download.status_code == 200
+    assert download.content == packet
+
+
+def test_signed_case_can_be_signed_again_only_after_invalidation(client: TestClient, tmp_path: Path) -> None:
+    case_id = _ready(client, tmp_path, name="Office first", client_name="Dana Cohen")
+    first = _sign_office(client, case_id)
+    assert first.status_code == 200, first.text
+    original = first.json()["case"]["audit"]["file_sha256"]
+
+    repeat = _sign_office(client, case_id)
+    assert repeat.status_code == 409, repeat.text
+    assert client.get(f"/cases/{case_id}").json()["case"]["audit"]["file_sha256"] == original
+
+    changed = client.post(f"/cases/{case_id}/fields", json={"key": "email", "value": "new@example.com"})
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["ready_to_sign"] is True
+    resigned = _sign_office(client, case_id)
+    assert resigned.status_code == 200, resigned.text
+    assert resigned.json()["case"]["audit"]["file_sha256"] != original
