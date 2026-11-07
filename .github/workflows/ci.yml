@@ -168,6 +168,7 @@ jobs:
         run: |
           npm ci
           npx tsc --noEmit -p apps/web
+          node --test apps/web/proxy-allowlist.test.mjs
           npm run build -w web
 
   compose-smoke:

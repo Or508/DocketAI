@@ -17,7 +17,14 @@ from app.models.case import Case
 from app.models.signing_link import SigningLink
 from app.schemas.chat import ChatMessageRead
 from app.schemas.gap import FillAndSignRequest
-from app.schemas.portal import PortalProcess, PortalSignRequest, PortalView, SigningLinkCreated, SigningLinkRead
+from app.schemas.portal import (
+    PortalProcess,
+    PortalSeal,
+    PortalSignRequest,
+    PortalView,
+    SigningLinkCreated,
+    SigningLinkRead,
+)
 from app.services.case_service import CaseService, _field_specs
 from app.services.chat_collector import ask
 from app.services.field_validator import missing_required_fields
@@ -141,6 +148,7 @@ class PortalService:
             messages.append(ChatMessageRead(role="assistant", content=ask(missing[0]), created_at=utcnow()))
         expires_at = as_utc(link.expires_at)
         assert expires_at is not None
+        signed_at = as_utc(case.signed_at) if state == "completed" else None
         return PortalView(
             state=state,  # type: ignore[arg-type]
             process=PortalProcess(name=case.process_definition.name, required_fields=fields),
@@ -152,9 +160,10 @@ class PortalService:
             waiting_on_office=any(not item.startswith("Still need:") for item in blockers),
             review_digest=review_digest(values, case.process_definition.template_filename),
             expires_at=expires_at,
-            signed_at=as_utc(case.signed_at) if state == "completed" else None,
+            signed_at=signed_at,
             download_expires_at=as_utc(link.download_expires_at) if state == "completed" else None,
             consent_text=PORTAL_CONSENT_TEXT,
+            seal=_seal(case, signed_at) if state == "completed" else None,
         )
 
     async def sign(
@@ -237,6 +246,29 @@ class PortalService:
             values=pdf_values,
             rtl_fields=rtl_fields,
         )
+
+
+def _recorded_ip(case: Case) -> str | None:
+    data = case.certificate_data
+    if not isinstance(data, dict):
+        return None
+    ip = data.get("signer_ip")
+    if not isinstance(ip, str) or not ip.strip():
+        return None
+    return ip
+
+
+def _seal(case: Case, signed_at: datetime | None) -> PortalSeal:
+    assert signed_at is not None
+    assert case.signer_verification_id is not None
+    assert case.file_sha256 is not None
+    return PortalSeal(
+        signed_at=signed_at,
+        signer_verification_id=case.signer_verification_id,
+        file_sha256=case.file_sha256,
+        recorded_ip=_recorded_ip(case),
+        time_zone="Asia/Jerusalem",
+    )
 
 
 def _hebrew(value: str) -> bool:

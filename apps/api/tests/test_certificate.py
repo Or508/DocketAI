@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -356,7 +357,10 @@ def test_portal_sign_with_a_real_forwarded_address(client: TestClient, tmp_path:
     text = _pdf_text(client.get(f"/cases/{case_id}/signed-document").content)
     assert "203.0.113.77" in text
     assert "SignerProbe/1" in text
-    assert "203.0.113.77" not in signed.text
+    body = signed.json()
+    assert body["seal"]["recorded_ip"] == "203.0.113.77"
+    rest = json.dumps({key: value for key, value in body.items() if key != "seal"})
+    assert "203.0.113.77" not in rest
     assert "SignerProbe/1" not in signed.text
 
 

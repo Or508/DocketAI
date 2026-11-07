@@ -183,6 +183,14 @@ export interface PortalProcess {
   required_fields: FieldSpec[];
 }
 
+export interface PortalSeal {
+  signed_at: string;
+  signer_verification_id: string;
+  file_sha256: string;
+  recorded_ip: string | null;
+  time_zone: "Asia/Jerusalem";
+}
+
 export interface PortalView {
   state: "open" | "completed";
   process: PortalProcess;
@@ -197,6 +205,7 @@ export interface PortalView {
   signed_at: string | null;
   download_expires_at: string | null;
   consent_text: string;
+  seal: PortalSeal | null;
 }
 
 export interface PortalSignRequest {

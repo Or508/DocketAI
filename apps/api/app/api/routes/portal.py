@@ -129,3 +129,22 @@ async def portal_download(
             "Cache-Control": "no-store",
         },
     )
+
+
+@router.get("/certificate")
+async def portal_certificate(
+    token: str = Depends(bearer_token),
+    service: PortalService = Depends(get_portal_service),
+) -> Response:
+    link, case = await service.resolve(token)
+    if link_state(link, case, utcnow()) != "completed":
+        raise ConflictError("The signed copy is not available.")
+    data = await service.cases.certificate_pdf(case.id)
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": content_disposition("certificate-of-completion.pdf"),
+            "Cache-Control": "no-store",
+        },
+    )

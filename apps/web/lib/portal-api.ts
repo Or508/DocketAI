@@ -44,3 +44,7 @@ export function portalPreviewUrl(token: string) {
 export function portalDownloadUrl(token: string) {
   return `${root(token)}/signed-document`;
 }
+
+export function portalCertificateUrl(token: string) {
+  return `${root(token)}/certificate`;
+}

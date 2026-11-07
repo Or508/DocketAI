@@ -93,9 +93,11 @@ export function FieldVerification({
                 {field.label_he ? ` · ${field.label_he}` : ""}
               </span>
               <Input
+                id={`field-${field.key}`}
                 value={value}
                 disabled={busy}
                 dir={field.rtl ? "rtl" : "ltr"}
+                className="scroll-mt-28"
                 inputMode={field.field_type === "phone" || field.field_type === "id_number" ? "numeric" : undefined}
                 aria-invalid={Boolean(errors[field.key]) || idCheck?.status === "invalid"}
                 onChange={(event) => change(field, event.target.value)}

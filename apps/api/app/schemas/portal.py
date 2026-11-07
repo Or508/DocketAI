@@ -23,6 +23,14 @@ class PortalProcess(BaseModel):
     required_fields: list[FieldSpec]
 
 
+class PortalSeal(BaseModel):
+    signed_at: datetime
+    signer_verification_id: str
+    file_sha256: str
+    recorded_ip: str | None
+    time_zone: Literal["Asia/Jerusalem"]
+
+
 class PortalView(BaseModel):
     state: Literal["open", "completed"]
     process: PortalProcess
@@ -37,6 +45,7 @@ class PortalView(BaseModel):
     signed_at: datetime | None
     download_expires_at: datetime | None
     consent_text: str
+    seal: PortalSeal | None = None
 
 
 class PortalSignRequest(BaseModel):

@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const ALLOWED: Record<string, Set<string>> = {
-  GET: new Set(["", "preview", "signed-document"]),
+  GET: new Set(["", "preview", "signed-document", "certificate"]),
   POST: new Set(["fields", "chat/stream", "sign"]),
 };
 

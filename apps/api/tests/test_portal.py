@@ -422,3 +422,85 @@ def test_chat_cap_preview_and_closed_portal_routes(client: TestClient, tmp_path:
     ):
         response = client.request(method, path, headers=_auth(token))
         assert response.status_code == 404, response.text
+
+
+_CERTIFICATE_KEYS = {
+    "signer_user_agent",
+    "signer_ip",
+    "case_reference",
+    "total_pages",
+    "data_completed_at",
+    "link_issued_at",
+    "channel",
+}
+
+
+def _no_certificate_fields(body: object) -> None:
+    if isinstance(body, dict):
+        assert _CERTIFICATE_KEYS.isdisjoint(body)
+        for value in body.values():
+            _no_certificate_fields(value)
+    elif isinstance(body, list):
+        for item in body:
+            _no_certificate_fields(item)
+
+
+def test_portal_seal_and_certificate_follow_the_signed_copy(client: TestClient, tmp_path: Path) -> None:
+    case_id, _ = _ready(client, tmp_path)
+    created = client.post(f"/cases/{case_id}/signing-links")
+    token = _token(created.json()["url"])
+    opened = client.get("/portal", headers=_auth(token))
+    assert opened.status_code == 200, opened.text
+    assert opened.json()["seal"] is None
+    _no_certificate_fields(opened.json())
+    early = client.get("/portal/certificate", headers=_auth(token))
+    assert early.status_code == 409
+    unknown = client.get("/portal/certificate", headers=_auth("missing-token"))
+    assert unknown.status_code == 404
+
+    view = opened.json()
+    signed = client.post(
+        "/portal/sign",
+        headers={**_auth(token), "X-Portal-Client-Ip": "203.0.113.10"},
+        json={"signature_png_base64": _PNG, "review_digest": view["review_digest"], "consent": True},
+    )
+    assert signed.status_code == 200, signed.text
+    completed = client.get("/portal", headers=_auth(token))
+    assert completed.status_code == 200, completed.text
+    body = completed.json()
+    audit = client.get(f"/cases/{case_id}").json()["case"]["audit"]
+    seal = body["seal"]
+    assert seal["signer_verification_id"] == audit["signer_verification_id"]
+    assert seal["file_sha256"] == audit["file_sha256"]
+    assert datetime.fromisoformat(seal["signed_at"]) == datetime.fromisoformat(audit["signed_at"])
+    assert seal["recorded_ip"] == "203.0.113.10"
+    assert seal["recorded_ip"] == audit["certificate"]["signer_ip"]
+    assert seal["time_zone"] == "Asia/Jerusalem"
+    assert set(seal) == {
+        "signed_at",
+        "signer_verification_id",
+        "file_sha256",
+        "recorded_ip",
+        "time_zone",
+    }
+    _no_certificate_fields(body)
+
+    download = client.get("/portal/certificate", headers=_auth(token))
+    assert download.status_code == 200, download.text
+    assert download.headers["content-type"] == "application/pdf"
+    assert download.content.startswith(b"%PDF")
+    assert "certificate-of-completion.pdf" in download.headers["content-disposition"]
+    assert case_id not in download.headers["content-disposition"]
+    assert download.headers["cache-control"] == "no-store"
+
+    async def end_download() -> None:
+        async with session_scope() as session:
+            link = await session.scalar(select(SigningLink).where(SigningLink.token_hash == hash_token(token)))
+            assert link is not None
+            link.download_expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+            await session.commit()
+
+    client.portal.call(end_download)
+    expired = client.get("/portal/certificate", headers=_auth(token))
+    assert expired.status_code == 410
+    assert client.get("/portal/signed-document", headers=_auth(token)).status_code == 410

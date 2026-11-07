@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import SignatureCanvas from "react-signature-canvas";
+import { useRef, useState } from "react";
 
+import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
@@ -10,95 +10,117 @@ export function SigningModal({
   open,
   busy,
   consentLabel,
+  notice,
   onOpenChange,
   onSign,
 }: {
   open: boolean;
   busy: boolean;
   consentLabel?: string;
+  notice?: string;
   onOpenChange: (open: boolean) => void;
   onSign: (pngDataUrl: string) => Promise<void>;
 }) {
-  const pad = useRef<SignatureCanvas>(null);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogTitle className="pe-12">Sign the packet</DialogTitle>
+        <p className="mt-2 text-sm text-mist">
+          Draw the signature. It is stamped onto the signature box of the filled form.
+        </p>
+        <div className="mt-4">
+          <SignatureForm busy={busy} consentLabel={consentLabel} notice={notice} onSign={onSign} />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function SignatureForm({
+  busy,
+  consentLabel,
+  notice,
+  onSign,
+}: {
+  busy: boolean;
+  consentLabel?: string;
+  notice?: string;
+  onSign: (pngDataUrl: string) => Promise<void>;
+}) {
+  const pad = useRef<SignaturePadHandle>(null);
   const sending = useRef(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [previewWidth, setPreviewWidth] = useState(0);
   const [padError, setPadError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    setAccepted(false);
+  function showPreview() {
+    const issue = pad.current?.issue();
+    if (issue) {
+      setPadError(issue);
+      setPreview(null);
+      return;
+    }
     setPadError(null);
-    setSubmitting(false);
-    sending.current = false;
-    const frame = window.requestAnimationFrame(() => {
-      const canvas = pad.current?.getCanvas();
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      if (rect.width < 2 || rect.height < 2) return;
-      const ratio = Math.max(window.devicePixelRatio || 1, 1);
-      canvas.width = Math.round(rect.width * ratio);
-      canvas.height = Math.round(rect.height * ratio);
-      canvas.getContext("2d")?.scale(ratio, ratio);
-      pad.current?.clear();
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [open]);
+    setPreview(pad.current?.png() ?? null);
+    setPreviewWidth(pad.current?.width() ?? 0);
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogTitle>Sign the packet</DialogTitle>
-        <p className="mt-2 text-sm text-mist">
-          Draw the signature. It is stamped onto the signature box of the filled form.
-        </p>
-        <div className="mt-4 rounded-md border border-line bg-white">
-          <SignatureCanvas
-            ref={pad}
-            penColor="#1c1915"
-            canvasProps={{ className: "h-40 w-full touch-none" }}
+    <div>
+      <SignaturePad
+        ref={pad}
+        onChange={() => {
+          setPreview(null);
+          setPadError(null);
+        }}
+      />
+      <Button type="button" variant="outline" className="mt-3 min-h-11 w-full" onClick={showPreview} disabled={busy}>
+        Preview signature
+      </Button>
+      {preview ? (
+        <figure className="mt-4 min-w-0">
+          <img
+            src={preview}
+            alt="Signature preview"
+            className="h-auto max-w-full rounded-md border border-line bg-white"
+            style={previewWidth > 0 ? { width: previewWidth } : undefined}
           />
-          <div className="mx-4 mb-3 border-t border-ink/30" />
-        </div>
-        {consentLabel ? (
-          <label className="mt-4 flex items-start gap-2 text-sm leading-6">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={accepted}
-              onChange={(event) => setAccepted(event.target.checked)}
-            />
-            <span>{consentLabel}</span>
-          </label>
-        ) : null}
-        {padError ? <p className="mt-3 text-sm text-clay">{padError}</p> : null}
-        <div className="mt-4 flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={() => pad.current?.clear()} disabled={busy}>
-            Clear
-          </Button>
-          <Button
-            type="button"
-            disabled={busy || submitting || (consentLabel ? !accepted : false)}
-            onClick={() => {
-              if (sending.current) return;
-              const canvas = pad.current;
-              if (!canvas || canvas.isEmpty()) {
-                setPadError("Draw a signature first.");
-                return;
-              }
-              setPadError(null);
-              sending.current = true;
-              setSubmitting(true);
-              void onSign(canvas.toDataURL("image/png")).finally(() => {
-                sending.current = false;
-                setSubmitting(false);
-              });
-            }}
-          >
-            {busy ? "Stamping…" : "Stamp and finish"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+          <figcaption className="mt-2 text-xs leading-5 text-mist">This is the signature that will be stamped.</figcaption>
+        </figure>
+      ) : null}
+      {consentLabel ? (
+        <label className="mt-4 flex min-h-11 items-center gap-3 text-sm leading-6">
+          <input
+            type="checkbox"
+            className="size-11 shrink-0"
+            checked={accepted}
+            onChange={(event) => setAccepted(event.target.checked)}
+          />
+          <span>{consentLabel}</span>
+        </label>
+      ) : null}
+      {notice ? <p className="mt-2 text-sm leading-6 text-mist">{notice}</p> : null}
+      {padError ? <p className="mt-3 text-sm text-clay">{padError}</p> : null}
+      <div className="mt-4">
+        <Button
+          type="button"
+          className="min-h-11 w-full"
+          disabled={busy || submitting || !preview || (consentLabel ? !accepted : false)}
+          onClick={() => {
+            if (sending.current || !preview) return;
+            sending.current = true;
+            setSubmitting(true);
+            void onSign(preview).finally(() => {
+              sending.current = false;
+              setSubmitting(false);
+            });
+          }}
+        >
+          {busy || submitting ? "Stamping…" : "Stamp and finish"}
+        </Button>
+      </div>
+    </div>
   );
 }

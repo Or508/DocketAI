@@ -244,6 +244,9 @@ def test_tampered_signed_file_fails_the_integrity_check(client: TestClient, tmp_
     portal = client.get("/portal/signed-document", headers={"Authorization": f"Bearer {token}"})
     assert portal.status_code == 500, portal.text
     assert portal.json()["code"] == "integrity_failed"
+    certificate = client.get("/portal/certificate", headers={"Authorization": f"Bearer {token}"})
+    assert certificate.status_code == 500, certificate.text
+    assert certificate.json()["code"] == "integrity_failed"
 
 
 def test_missing_objects_are_not_found(client: TestClient, tmp_path: Path) -> None:

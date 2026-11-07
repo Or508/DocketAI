@@ -20,7 +20,7 @@ from app.schemas.case import CaseAudit, CaseCertificate, CaseRead
 from app.schemas.chat import ChatRequest, FieldUpdateRequest
 from app.schemas.events import CaseProgressEvent, StreamError
 from app.schemas.gap import PipelineProgress
-from app.schemas.portal import PortalProcess, PortalSignRequest, PortalView, SigningLinkCreated, SigningLinkRead
+from app.schemas.portal import PortalProcess, PortalSeal, PortalSignRequest, PortalView, SigningLinkCreated, SigningLinkRead
 
 _PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAADIAAAAUCAIAAABAqPnNAAAALklEQVR4nO3OMQEAAAyDMPyb3jTw9SAKAnB7Fk9Xy6ll1DJqGbWMWkYto5ZRy3gIz6nxyF1oDwAAAABJRU5ErkJggg=="
@@ -37,6 +37,7 @@ _PAIRS = {
     "SigningLinkRead": SigningLinkRead,
     "SigningLinkCreated": SigningLinkCreated,
     "PortalProcess": PortalProcess,
+    "PortalSeal": PortalSeal,
     "PortalView": PortalView,
     "PortalSignRequest": PortalSignRequest,
 }
