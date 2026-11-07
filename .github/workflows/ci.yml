@@ -266,7 +266,9 @@ jobs:
 
       - name: Audit Python packages
         working-directory: apps/api
+        # The runner's bundled pip has its own advisories, and pip-audit reports them too.
         run: |
+          python -m pip install --upgrade pip
           python -m pip install -e .
           python -m pip install pip-audit==2.10.1
           pip-audit --skip-editable
