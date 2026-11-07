@@ -60,6 +60,7 @@ from app.services.field_validator import missing_required_fields, validate_field
 from app.services.pdf_filler import SignedArtifact, decode_signature_png
 from app.services.object_store import ObjectMissingError, ObjectReader
 from app.services.structural_excerpt import anchors_from_text, structural_signature
+from app.services.preflight import preflight
 from app.services.uploads import store_upload
 
 logger = logging.getLogger(__name__)
@@ -167,6 +168,18 @@ class CaseService:
                     if stored.content_hash in known_hashes:
                         os.remove(stored.storage_path)
                         skipped.append(stored.original_filename)
+                        continue
+                    try:
+                        await preflight(
+                            Path(stored.storage_path),
+                            stored.mime_type,
+                            self.container.settings,
+                            stored.original_filename,
+                        )
+                        await self.container.scanner.scan(Path(stored.storage_path), stored.original_filename)
+                    except BadRequestError as exc:
+                        os.remove(stored.storage_path)
+                        rejected.append(FileRejection(filename=stored.original_filename, reason=exc.message))
                         continue
                     known_hashes.add(stored.content_hash)
                     key = document_key(

@@ -16,6 +16,7 @@ dependencies = [
   "pymupdf>=1.25.1",
   "pypdf>=5.1.0",
   "reportlab>=4.2.5",
+  "pillow>=10.4",
   "arabic-reshaper>=3.0.0",
   "python-bidi>=0.6.6",
   "google-genai>=1.2.0",
@@ -33,7 +34,12 @@ dev = [
   "pytest>=8.3.4",
   "httpx>=0.28.1",
   "moto[s3]>=5",
+  "bandit[toml]==1.9.4",
+  "pip-audit==2.10.1",
 ]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
 
 [build-system]
 requires = ["setuptools>=68"]

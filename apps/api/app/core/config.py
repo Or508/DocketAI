@@ -59,6 +59,16 @@ class Settings(BaseSettings):
     signing_link_ttl_hours: int = 72
     signing_link_download_hours: int = 168
     signing_link_max_chat_turns: int = 40
+    preflight_timeout_seconds: int = 20
+    preflight_memory_mb: int = 768
+    preflight_max_pages: int = 300
+    preflight_max_page_inches: int = 200
+    preflight_max_decompressed_mb: int = 512
+    preflight_max_image_pixels: int = 50_000_000
+    preflight_reject_pdf_javascript: bool = True
+    clamav_host: str = ""
+    clamav_port: int = 3310
+    clamav_timeout_seconds: int = 30
 
     @field_validator("storage_dir", "template_dir", "hebrew_font_path", mode="before")
     @classmethod

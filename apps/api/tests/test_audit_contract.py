@@ -23,7 +23,7 @@ from app.schemas.gap import PipelineProgress
 from app.schemas.portal import PortalProcess, PortalSignRequest, PortalView, SigningLinkCreated, SigningLinkRead
 
 _PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    "iVBORw0KGgoAAAANSUhEUgAAADIAAAAUCAIAAABAqPnNAAAALklEQVR4nO3OMQEAAAyDMPyb3jTw9SAKAnB7Fk9Xy6ll1DJqGbWMWkYto5ZRy3gIz6nxyF1oDwAAAABJRU5ErkJggg=="
 )
 _PAIRS = {
     "CaseCertificate": CaseCertificate,

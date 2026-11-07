@@ -7,5 +7,10 @@
   ],
   "scripts": {
     "dev:web": "npm run dev -w web"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.32"
+    }
   }
 }

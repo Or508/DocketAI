@@ -24,7 +24,7 @@ from app.services.storage_paths import resolve_stored
 
 _PNG = base64.b64encode(
     base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        "iVBORw0KGgoAAAANSUhEUgAAADIAAAAUCAIAAABAqPnNAAAALklEQVR4nO3OMQEAAAyDMPyb3jTw9SAKAnB7Fk9Xy6ll1DJqGbWMWkYto5ZRy3gIz6nxyF1oDwAAAABJRU5ErkJggg=="
     )
 ).decode()
 _ANSWERS = ["Dana Cohen", "123456782", "dana@example.com", "0501234567", "הרצל 1 תל אביב", "04/11/2026"]

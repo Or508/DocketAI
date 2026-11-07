@@ -1,0 +1,22 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Named development, CI, and test values. Each entry is one exact value."
+regexTarget = "secret"
+regexes = [
+  # Compose RustFS development secret. Not a production credential.
+  '''^docket-local-dev$''',
+  # CI S3 access key. A throwaway literal used only inside the workflow.
+  '''^ci-access$''',
+  # CI S3 secret. A throwaway literal used only inside the workflow.
+  '''^ci-secret-not-real$''',
+  # Pytest staff password.
+  '''^correct-horse-battery$''',
+  # Password on an encrypted PDF generated inside a test.
+  '''^user-secret$''',
+  # Owner password on an encrypted PDF generated inside a test.
+  '''^owner-secret$''',
+  # Moto stand-in for an S3 access key and secret in unit tests.
+  '''^minioadmin$''',
+]

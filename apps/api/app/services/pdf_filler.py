@@ -1,4 +1,5 @@
 import base64
+import io
 import hashlib
 import html
 import logging
@@ -39,9 +40,31 @@ def decode_signature_png(payload: str) -> bytes:
         raise BadRequestError("The signature image is not valid base64.") from exc
     if len(data) > 2_000_000:
         raise BadRequestError("The signature image is larger than 2 MB.")
-    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+    if not data.startswith(b"\x89PNG\r\n\x1a\n") or len(data) < 24:
         raise BadRequestError("The signature must be a PNG image.")
+    width = int.from_bytes(data[16:20], "big")
+    height = int.from_bytes(data[20:24], "big")
+    if width > 4000 or height > 2000 or width < 50 or height < 20:
+        raise BadRequestError("The signature image is not an accepted size.")
+    if not _signature_has_ink(data):
+        raise BadRequestError("The signature is empty.")
     return data
+
+
+def _signature_has_ink(data: bytes) -> bool:
+    # Pillow does this in C. A per-pixel Python loop took seconds on a large
+    # blank image and held the event loop for every other request.
+    from PIL import Image
+
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            rgba = image.convert("RGBA")
+    except Exception as exc:
+        raise BadRequestError("The signature must be a PNG image.") from exc
+    flat = Image.alpha_composite(Image.new("RGBA", rgba.size, (255, 255, 255, 255)), rgba).convert("L")
+    # Ink is anything darker than near-white.
+    ink = flat.point(lambda value: 255 if value < 250 else 0)
+    return ink.getbbox() is not None
 
 
 class PdfFillerService:

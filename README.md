@@ -21,6 +21,8 @@ DocketAI takes a bundle of PDFs and scans, classifies each file against a proces
 - [Engineering highlights](#engineering-highlights)
 - [Repository structure](#repository-structure)
 - [Getting started](#getting-started)
+- [Storage](#storage)
+- [File intake](#file-intake)
 - [Testing and quality](#testing-and-quality)
 - [Known limitations and roadmap](#known-limitations-and-roadmap)
 
@@ -266,9 +268,21 @@ python -m app.cli migrate-storage
 
 The command refuses to run unless `STORAGE_BACKEND=s3`. It checks each stored hash, writes `org/{organization_id}/{relative key}`, reads the object back, and updates one row at a time. The local source is not deleted, and the command is safe to run again.
 
+## File intake
+
+Each accepted upload is checked in a separate process before it is stored. A PDF is rejected when it is encrypted, has more than `PREFLIGHT_MAX_PAGES` pages, has a page larger than `PREFLIGHT_MAX_PAGE_INCHES`, expands past `PREFLIGHT_MAX_DECOMPRESSED_MB`, or contains an embedded file, a launch action, rich media, or JavaScript. Set `PREFLIGHT_REJECT_PDF_JAVASCRIPT=false` to allow JavaScript. Images are measured before their pixels are decoded and rejected past `PREFLIGHT_MAX_IMAGE_PIXELS` or the page limits. The process is limited by `PREFLIGHT_TIMEOUT_SECONDS` and, on Linux, `PREFLIGHT_MEMORY_MB`. A signature PNG is rejected outside 50 by 20 through 4000 by 2000 pixels, and when it has no ink.
+
+`CLAMAV_HOST` is empty by default, and then no malware scan runs. To turn scanning on locally, start ClamAV with the compose scan profile and point the app at it:
+
+```bash
+docker compose --profile scan up -d clamav
+```
+
+The service is `clamav/clamav:1.5.4`, published only on `127.0.0.1:3310`. Set `CLAMAV_HOST=127.0.0.1` for an app on the host, or `CLAMAV_HOST=clamav` for the API container. `CLAMAV_PORT` and `CLAMAV_TIMEOUT_SECONDS` default to 3310 and 30. If the scanner cannot be reached, the upload fails and nothing from that request is stored.
+
 ## Testing and quality
 
-The API suite has 98 tests across 18 files. It runs on a temporary SQLite database and needs no external services. moto stands in for S3. To run the same suite against an S3-compatible server such as the compose RustFS, create a bucket and export `TEST_S3_ENDPOINT`, `TEST_S3_BUCKET`, `TEST_S3_REGION`, `TEST_S3_ACCESS_KEY_ID`, `TEST_S3_SECRET_ACCESS_KEY`, and `TEST_S3_FORCE_PATH_STYLE`, then run `pytest` from `apps/api`. Tests that read the local directory directly are skipped in that mode.
+The API suite has 113 tests across 21 files. It runs on a temporary SQLite database and needs no external services. moto stands in for S3. To run the same suite against an S3-compatible server such as the compose RustFS, create a bucket and export `TEST_S3_ENDPOINT`, `TEST_S3_BUCKET`, `TEST_S3_REGION`, `TEST_S3_ACCESS_KEY_ID`, `TEST_S3_SECRET_ACCESS_KEY`, and `TEST_S3_FORCE_PATH_STYLE`, then run `pytest` from `apps/api`. Tests that read the local directory directly are skipped in that mode.
 
 GitHub Actions runs the same checks on pushes and pull requests to `main`. The workflow is [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
@@ -279,6 +293,10 @@ GitHub Actions runs the same checks on pushes and pull requests to `main`. The w
 | `migrations` | One Alembic head, then upgrade, downgrade to base, and upgrade again on Postgres 16. |
 | `web` | `npm ci`, the web typecheck, and the Next.js production build on Node 22. |
 | `compose-smoke` | The app Compose profile boots, the API and worker do not share a storage volume, and a sample PDF uploads, finishes processing, and downloads unchanged. |
+| `security-lint` | Bandit at medium severity and confidence on the API and the CI scripts. |
+| `dependency-audit` | `pip-audit` for the API, and `npm audit` at high severity. |
+| `secrets` | Gitleaks over the full history, or over the pull request commits. |
+| CodeQL | Python and JavaScript analysis with the `security-extended` queries, on push, pull request, and a weekly schedule. |
 
 ```bash
 cd apps/api
@@ -308,6 +326,7 @@ npm run build -w web
 | Staff sessions | `test_auth.py` |
 | Organization isolation | `test_tenancy.py` |
 | Object storage | `test_object_store.py`, `test_storage.py`, `test_storage_flow.py` |
+| File intake | `test_preflight.py`, `test_malware_scan.py`, `test_signature_intake.py` |
 
 ## Known limitations and roadmap
 

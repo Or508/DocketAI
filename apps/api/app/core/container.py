@@ -8,6 +8,7 @@ from app.services.fonts import resolve_hebrew_font
 from app.services.gap_analyzer import GapAnalyzer
 from app.services.gemini_client import GoogleGeminiClient
 from app.services.learning_store import QdrantLearningStore
+from app.services.malware_scan import MalwareScanner, build_scanner
 from app.services.object_store import ObjectStore, build_object_store
 from app.services.pdf_filler import PdfFillerService
 from app.services.pipeline import IngestionPipeline
@@ -26,6 +27,7 @@ class Container:
     pipeline: IngestionPipeline
     chat: ChatCollector
     templates: TemplateFactory
+    scanner: MalwareScanner
 
 
 def build_container(settings: Settings | None = None) -> Container:
@@ -47,4 +49,5 @@ def build_container(settings: Settings | None = None) -> Container:
         pipeline=IngestionPipeline(processor, classifier, learning, store),
         chat=ChatCollector(gemini),
         templates=TemplateFactory(settings.resolved_template_dir, font),
+        scanner=build_scanner(settings),
     )

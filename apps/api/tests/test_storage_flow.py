@@ -24,7 +24,13 @@ from app.models.document import Document
 from app.services.storage_migration import migrate_storage
 from tests.test_certificate import _PNG, _ready
 
-_PDF = b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF"
+_PDF = (
+    b"%PDF-1.4\n"
+    b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+    b"2 0 obj\n<< /Type /Pages /Count 1 /Kids [3 0 R] >>\nendobj\n"
+    b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>\nendobj\n"
+    b"trailer << /Root 1 0 R >>\n%%EOF\n"
+)
 _PNG_BYTES = base64.b64decode(_PNG)
 _FAILURE = {
     "detail": "File storage is unavailable. Try again shortly.",

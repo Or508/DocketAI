@@ -51,6 +51,11 @@ class StorageUnavailableError(AppError):
         super().__init__(message, status_code=503, code="storage_unavailable")
 
 
+class ScannerUnavailableError(AppError):
+    def __init__(self, message: str = "File scanning is unavailable. Try again shortly.") -> None:
+        super().__init__(message, status_code=503, code="scanner_unavailable")
+
+
 class SignedFileIntegrityError(AppError):
     def __init__(self, message: str = "The signed document failed its integrity check.") -> None:
         super().__init__(message, status_code=500, code="integrity_failed")

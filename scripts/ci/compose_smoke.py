@@ -6,14 +6,14 @@ The password is read from DOCKET_USER_PASSWORD and is never printed.
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import sys
 import time
-import urllib.error
-import urllib.request
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "sample.pdf"
 DEADLINE_SECONDS = 180
@@ -31,12 +31,22 @@ def _request(
     prepared = dict(headers or {})
     if token:
         prepared["Authorization"] = f"Bearer {token}"
-    request = urllib.request.Request(url, data=data, headers=prepared, method=method)
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        print("The API base must be an http or https URL.", file=sys.stderr)
+        raise SystemExit(1)
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    connection_cls = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    connection = connection_cls(parsed.hostname, port, timeout=timeout)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.status, response.read()
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read()
+        connection.request(method, path, body=data, headers=prepared)
+        response = connection.getresponse()
+        return response.status, response.read()
+    finally:
+        connection.close()
 
 
 def _json(status: int, body: bytes, expected: int) -> dict:

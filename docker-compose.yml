@@ -97,6 +97,7 @@ services:
       SIGNING_LINK_TTL_HOURS: ${SIGNING_LINK_TTL_HOURS:-72}
       SIGNING_LINK_DOWNLOAD_HOURS: ${SIGNING_LINK_DOWNLOAD_HOURS:-168}
       SIGNING_LINK_MAX_CHAT_TURNS: ${SIGNING_LINK_MAX_CHAT_TURNS:-40}
+      CLAMAV_HOST: ${CLAMAV_HOST:-}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -114,6 +115,14 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+  # Optional. Stays off unless the stack is started with --profile scan and
+  # CLAMAV_HOST is set, for example CLAMAV_HOST=clamav.
+  clamav:
+    profiles: ["scan"]
+    image: clamav/clamav:1.5.4
+    ports:
+      - "127.0.0.1:3310:3310"
 
   worker:
     profiles: ["app"]

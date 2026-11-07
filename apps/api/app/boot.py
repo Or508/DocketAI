@@ -17,7 +17,7 @@ def main() -> None:
         _migrate()
         os.execvp(
             sys.executable,
-            [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"],
+            [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"],  # nosec B104 inside the container; Compose publishes it on 127.0.0.1 only
         )
     if role == "worker":
         os.execvp(sys.executable, [sys.executable, "-m", "arq", "app.workers.tasks.WorkerSettings"])
