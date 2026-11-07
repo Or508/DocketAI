@@ -1,5 +1,8 @@
+import hashlib
 import logging
+import os
 import re
+import tempfile
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -15,7 +18,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.container import Container
-from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError, ProcessingError
+from app.core.exceptions import (
+    BadRequestError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    ProcessingError,
+    SignedFileIntegrityError,
+)
 from app.core.time import utcnow
 from app.domain.certificate import (
     OFFICE_CONSENT_TEXT,
@@ -32,6 +42,7 @@ from app.domain.enums import (
     DocumentStatus,
 )
 from app.domain.readiness import signing_blockers
+from app.domain.storage_keys import document_key, signed_keys
 from app.domain.signing_links import as_utc
 from app.domain.text_layout import contains_hebrew
 from app.models.audit_log import AuditLog
@@ -47,7 +58,7 @@ from app.schemas.workspace import CaseWorkspace, FileRejection, UploadResult
 from app.services.chat_collector import OPENING, ChatTurn
 from app.services.field_validator import missing_required_fields, validate_field
 from app.services.pdf_filler import SignedArtifact, decode_signature_png
-from app.services.storage_paths import resolve_stored, storage_relative
+from app.services.object_store import ObjectMissingError, ObjectReader
 from app.services.structural_excerpt import anchors_from_text, structural_signature
 from app.services.uploads import store_upload
 
@@ -131,63 +142,72 @@ class CaseService:
             raise BadRequestError(f"Upload at most {limit} files at a time.")
 
         case = await self._get_case(case_id)
-        case_dir = self.container.settings.resolved_storage_dir / "cases" / str(case.id)
         known_hashes = {document.content_hash for document in case.documents}
         accepted: list[str] = []
         skipped: list[str] = []
         rejected: list[FileRejection] = []
-        created_paths: list[Path] = []
-
-        for upload in files:
-            suffix = Path(upload.filename or "upload").suffix.lower()
-            dest = case_dir / f"{uuid.uuid4().hex}{suffix}"
-            try:
-                stored = await store_upload(
-                    upload,
-                    dest,
-                    max_bytes=self.container.settings.max_upload_bytes,
-                )
-            except BadRequestError as exc:
-                rejected.append(FileRejection(filename=Path(upload.filename or "upload").name, reason=exc.message))
-                continue
-            if stored.content_hash in known_hashes:
-                Path(stored.storage_path).unlink(missing_ok=True)
-                skipped.append(stored.original_filename)
-                continue
-            known_hashes.add(stored.content_hash)
-            created_paths.append(Path(stored.storage_path))
-            relative_path = storage_relative(
-                self.container.settings.resolved_storage_dir,
-                Path(stored.storage_path),
-            )
-            self.session.add(
-                Document(
-                    case_id=case.id,
-                    original_filename=stored.original_filename,
-                    storage_path=relative_path,
-                    mime_type=stored.mime_type,
-                    file_size=stored.file_size,
-                    content_hash=stored.content_hash,
-                    status=DocumentStatus.UPLOADED,
-                    classification_source=ClassificationSource.PENDING,
-                )
-            )
-            accepted.append(stored.original_filename)
+        created_keys: list[str] = []
 
         try:
-            if accepted:
-                self._invalidate_signature(case, reason="A new file was uploaded after signing.")
-                case.status = CaseStatus.PROCESSING
-                case.pipeline_stage = "parsing"
-                case.pipeline_message = "Parsing"
-                case.pipeline_completed = 0
-                case.pipeline_total = len(accepted)
-                case.updated_at = utcnow()
-            await self.session.commit()
+            with tempfile.TemporaryDirectory() as work:
+                for upload in files:
+                    suffix = Path(upload.filename or "upload").suffix.lower()
+                    dest = Path(work) / f"{uuid.uuid4().hex}{suffix}"
+                    try:
+                        stored = await store_upload(
+                            upload,
+                            dest,
+                            max_bytes=self.container.settings.max_upload_bytes,
+                        )
+                    except BadRequestError as exc:
+                        rejected.append(
+                            FileRejection(filename=Path(upload.filename or "upload").name, reason=exc.message)
+                        )
+                        continue
+                    if stored.content_hash in known_hashes:
+                        os.remove(stored.storage_path)
+                        skipped.append(stored.original_filename)
+                        continue
+                    known_hashes.add(stored.content_hash)
+                    key = document_key(
+                        case.organization_id,
+                        case.id,
+                        Path(stored.original_filename).suffix.lower(),
+                    )
+                    created_keys.append(key)
+                    with Path(stored.storage_path).open("rb") as handle:
+                        await self.container.store.upload_file(key, handle, stored.mime_type)
+                    os.remove(stored.storage_path)
+                    self.session.add(
+                        Document(
+                            case_id=case.id,
+                            original_filename=stored.original_filename,
+                            storage_path=key,
+                            mime_type=stored.mime_type,
+                            file_size=stored.file_size,
+                            content_hash=stored.content_hash,
+                            status=DocumentStatus.UPLOADED,
+                            classification_source=ClassificationSource.PENDING,
+                        )
+                    )
+                    accepted.append(stored.original_filename)
+
+                if accepted:
+                    self._invalidate_signature(case, reason="A new file was uploaded after signing.")
+                    case.status = CaseStatus.PROCESSING
+                    case.pipeline_stage = "parsing"
+                    case.pipeline_message = "Parsing"
+                    case.pipeline_completed = 0
+                    case.pipeline_total = len(accepted)
+                    case.updated_at = utcnow()
+                await self.session.commit()
         except Exception:
             await self.session.rollback()
-            for path in created_paths:
-                path.unlink(missing_ok=True)
+            for key in created_keys:
+                try:
+                    await self.container.store.delete_file(key)
+                except Exception:
+                    logger.exception("Could not delete object %s after a failed upload", key)
             raise
         self.session.expire(case, ["documents"])
         refreshed = await self._get_case(case_id)
@@ -527,14 +547,7 @@ class CaseService:
             if spec.rtl or contains_hebrew(value):
                 rtl_fields.add(spec.pdf_field_name)
 
-        output = (
-            self.container.settings.resolved_storage_dir
-            / "cases"
-            / str(case.id)
-            / "signed"
-            / f"{_safe_stem(case.name)}-signed.pdf"
-        )
-        form_path = output.with_name(output.stem + "-form.pdf")
+        packet_key, form_key = signed_keys(case.organization_id, case.id)
         case.field_values = merged
         self._mark_data_completion(case)
         if before_fill is not None:
@@ -558,23 +571,30 @@ class CaseService:
             link_issued_at=as_utc(link_issued_at) if link_issued_at is not None else None,
             signed_at=signed_at,
         )
-        output.unlink(missing_ok=True)
+        created_keys: list[str] = []
+        commit_started = False
         try:
-            artifact = self.container.pdf_filler.fill_and_sign(
-                template_path=template,
-                output_path=output,
-                values=pdf_values,
-                signature_png=signature,
-                signature_rect=[float(item) for item in rect],
-                page_index=int(layout.get("page_index", 0)),
-                rtl_fields=rtl_fields,
-                certificate=certificate,
-                signed_at=signed_at,
-            )
-            case.output_path = storage_relative(self.container.settings.resolved_storage_dir, output)
-            case.content_path = storage_relative(
-                self.container.settings.resolved_storage_dir, artifact.content_path
-            )
+            with tempfile.TemporaryDirectory() as work:
+                output = Path(work) / "signed.pdf"
+                artifact = self.container.pdf_filler.fill_and_sign(
+                    template_path=template,
+                    output_path=output,
+                    values=pdf_values,
+                    signature_png=signature,
+                    signature_rect=[float(item) for item in rect],
+                    page_index=int(layout.get("page_index", 0)),
+                    rtl_fields=rtl_fields,
+                    certificate=certificate,
+                    signed_at=signed_at,
+                )
+                created_keys.append(form_key)
+                with artifact.content_path.open("rb") as handle:
+                    await self.container.store.upload_file(form_key, handle, "application/pdf")
+                created_keys.append(packet_key)
+                with output.open("rb") as handle:
+                    await self.container.store.upload_file(packet_key, handle, "application/pdf")
+            case.output_path = packet_key
+            case.content_path = form_key
             case.content_sha256 = artifact.content_sha256
             case.file_sha256 = artifact.file_sha256
             case.signer_verification_id = artifact.signer_verification_id
@@ -627,35 +647,41 @@ class CaseService:
                     new_value=recorded,
                 )
             )
+            commit_started = True
             await self.session.commit()
         except Exception:
-            output.unlink(missing_ok=True)
-            form_path.unlink(missing_ok=True)
             await self.session.rollback()
+            if commit_started:
+                logger.error("Signing commit failed; retained objects %s", created_keys)
+            else:
+                for key in created_keys:
+                    try:
+                        await self.container.store.delete_file(key)
+                    except Exception:
+                        logger.exception("Could not delete object %s after a failed signing", key)
             raise
         stored = await self._get_case(case.id)
         return self._workspace(stored)
 
-    async def signed_pdf(self, case_id: uuid.UUID) -> Path:
+    async def signed_pdf(self, case_id: uuid.UUID) -> tuple[bytes, str]:
         case = await self._get_case(case_id)
         if case.status != CaseStatus.SIGNED or not case.output_path:
             raise NotFoundError("This case has no signed document yet.")
-        root = self.container.settings.resolved_storage_dir.resolve()
-        path = resolve_stored(root, case.output_path)
         try:
-            path.relative_to(root)
-        except ValueError as exc:
-            raise NotFoundError("This case has no signed document yet.") from exc
-        if not path.is_file():
-            raise NotFoundError("The signed document file is missing.")
-        return path
+            data = await self.container.store.download_file(case.output_path)
+        except ObjectMissingError as exc:
+            raise NotFoundError("The signed document file is missing.") from exc
+        if case.file_sha256 and hashlib.sha256(data).hexdigest() != case.file_sha256:
+            logger.error("Signed file integrity check failed for case %s", case.id)
+            raise SignedFileIntegrityError()
+        return data, f"{_safe_stem(case.name)}-signed.pdf"
 
     async def certificate_pdf(self, case_id: uuid.UUID) -> bytes:
         case = await self._get_case(case_id)
         if case.status != CaseStatus.SIGNED or not case.output_path or not case.certificate_data:
             raise NotFoundError("This case has no certificate.")
-        path = await self.signed_pdf(case_id)
-        document = fitz.open(path)
+        data, _filename = await self.signed_pdf(case_id)
+        document = fitz.open(stream=data, filetype="pdf")
         try:
             if document.page_count < 1:
                 raise NotFoundError("This case has no certificate.")
@@ -676,20 +702,16 @@ class CaseService:
         elif case.data_completed_at is None:
             case.data_completed_at = utcnow()
 
-    async def document_file(self, case_id: uuid.UUID, document_id: uuid.UUID) -> tuple[Path, str, str]:
+    async def document_file(self, case_id: uuid.UUID, document_id: uuid.UUID) -> tuple[ObjectReader, str, str]:
         case = await self._get_case(case_id)
         document = next((item for item in case.documents if item.id == document_id), None)
         if document is None:
             raise NotFoundError("Document not found on this case.")
-        root = self.container.settings.resolved_storage_dir.resolve()
-        path = resolve_stored(root, document.storage_path)
         try:
-            path.relative_to(root)
-        except ValueError as exc:
-            raise NotFoundError("Document not found on this case.") from exc
-        if not path.is_file():
-            raise NotFoundError("The document file is missing.")
-        return path, document.mime_type, document.original_filename
+            reader = await self.container.store.open_read(document.storage_path)
+        except ObjectMissingError as exc:
+            raise NotFoundError("The document file is missing.") from exc
+        return reader, document.mime_type, document.original_filename
 
     async def _get_case(self, case_id: uuid.UUID) -> Case:
         stmt = (
@@ -871,12 +893,8 @@ class CaseService:
             case.signed_at = None
             return
         previous["case_reference"] = case.case_reference
-        if case.output_path:
-            path = resolve_stored(self.container.settings.resolved_storage_dir, case.output_path)
-            path.unlink(missing_ok=True)
-        if case.content_path:
-            form = resolve_stored(self.container.settings.resolved_storage_dir, case.content_path)
-            form.unlink(missing_ok=True)
+        previous["content_path"] = case.content_path
+        # The audit row is the record of where the superseded packet lives.
         case.output_path = None
         case.content_path = None
         case.certificate_data = None

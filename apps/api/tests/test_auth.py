@@ -159,6 +159,7 @@ def test_case_selection_is_centralized() -> None:
         (root / "domain" / "case_scope.py").resolve(),
         (root / "workers" / "runner.py").resolve(),
         (root / "core" / "deps.py").resolve(),
+        (root / "services" / "storage_migration.py").resolve(),
     }
     for path in root.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))

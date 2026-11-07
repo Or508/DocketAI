@@ -9,7 +9,7 @@ DocketAI takes a bundle of PDFs and scans, classifies each file against a proces
 ![Next.js 15](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
-![Pytest](https://img.shields.io/badge/pytest-65%20passing-0A9EDC?logo=pytest&logoColor=white)
+![Pytest](https://img.shields.io/badge/pytest-98%20passing-0A9EDC?logo=pytest&logoColor=white)
 
 > **Project status:** DocketAI is a working portfolio system, not a hosted product. Office routes require a staff login. The API stays private behind the Next.js proxies. See [Known limitations](#known-limitations-and-roadmap).
 
@@ -45,7 +45,7 @@ flowchart LR
     Web -->|"Office proxy"| API["FastAPI API"]
     Web -->|"Allowlisted /portal proxy"| API
     API --> DB[("PostgreSQL or SQLite")]
-    API --> Files[("Document storage")]
+    API --> Files[("Object storage")]
     API -->|"Enqueue job"| Redis[("Redis")]
     Redis --> Worker["ARQ worker"]
     Worker --> DB
@@ -67,7 +67,7 @@ flowchart LR
 | API | Python 3.11+, FastAPI, Pydantic, SQLAlchemy (async), Alembic |
 | Web | Next.js 15 (App Router), React 19, TypeScript (strict), Tailwind CSS, pdf.js |
 | Documents | PyMuPDF, ReportLab, pypdf, python-bidi, arabic-reshaper, bundled Rubik font |
-| Data | PostgreSQL (SQLite for zero-setup local runs), local file storage |
+| Data | PostgreSQL (SQLite for zero-setup local runs), local or S3-compatible object storage |
 | Background work | Redis, ARQ |
 | AI | Gemini (classification, field extraction, reply phrasing), Qdrant (label memory) |
 | Infrastructure | Docker, Docker Compose |
@@ -115,7 +115,7 @@ The portal gives an outside signer exactly one capability: completing one case.
 - **Revocation with a receipt.** Signing closes all write access at once, while the same token keeps time-limited, read-only access to the signed copy.
 - **Bounded cost and exposure.** Chat turns are capped per link, and portal pages send `no-referrer`, `noindex`, and `no-store` headers.
 
-Stored paths are resolved and confirmed to sit inside the storage root before any file is served, and uploads are saved under generated names.
+Object keys are the only stored paths. A new file is `org/{organization_id}/cases/{case_id}/documents/{id}{suffix}`, and a signed packet is `org/{organization_id}/cases/{case_id}/signed/{id}/signed.pdf` with the pre-certificate form beside it. Keys are generated, never reused, and contain neither the case name nor the uploaded filename. A download still goes through the office session or the signing token before any bytes are read.
 
 ### Background processing and streaming
 
@@ -245,9 +245,29 @@ docker compose --profile app up -d --build
 
 After changing a form definition, delete `apps/api/app/assets/templates/*.pdf` so the templates are rebuilt.
 
+## Storage
+
+`STORAGE_BACKEND=local` keeps objects under `STORAGE_DIR` (or `apps/api/data/storage`). `STORAGE_BACKEND=s3` uses the bucket named by `S3_BUCKET`. Set `S3_ENDPOINT_URL` and `S3_FORCE_PATH_STYLE=true` for RustFS, MinIO, or another S3-compatible service. Leave `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` both blank to use the default AWS credential chain, or set both. `S3_SERVER_SIDE_ENCRYPTION` and `S3_KMS_KEY_ID` are sent when they are set.
+
+Docker Compose starts [RustFS](https://github.com/rustfs/rustfs), an S3-compatible server, on `127.0.0.1:9000` with its console on `127.0.0.1:9001`. A one-shot `storage-setup` service creates a private `docketai` bucket, and the `app` profile points the API and worker at it, so they share no volume. MinIO no longer publishes community container images, which is why it is not used here. The compose credentials are development defaults, overridable with `S3_DEV_ACCESS_KEY` and `S3_DEV_SECRET_KEY`. Templates and fonts stay on the local disk.
+
+Local and S3-compatible backends are covered by the test suite, using moto in the default run and a real S3-compatible server when `TEST_S3_ENDPOINT` is set. That mode has been run against RustFS. AWS S3 itself has not been tested. Google Cloud Storage is untested.
+
+An invalidated signature clears the case columns and writes an audit row. The superseded packet and its form object are kept. No retention period is configured.
+
+To copy existing local files into the configured bucket:
+
+```bash
+cd apps/api
+python -m app.cli migrate-storage --dry-run
+python -m app.cli migrate-storage
+```
+
+The command refuses to run unless `STORAGE_BACKEND=s3`. It checks each stored hash, writes `org/{organization_id}/{relative key}`, reads the object back, and updates one row at a time. The local source is not deleted, and the command is safe to run again.
+
 ## Testing and quality
 
-The API suite has 65 tests across 15 files. It runs on a temporary SQLite database and needs no external services.
+The API suite has 98 tests across 18 files. It runs on a temporary SQLite database and needs no external services. moto stands in for S3. To run the same suite against an S3-compatible server such as the compose RustFS, create a bucket and export `TEST_S3_ENDPOINT`, `TEST_S3_BUCKET`, `TEST_S3_REGION`, `TEST_S3_ACCESS_KEY_ID`, `TEST_S3_SECRET_ACCESS_KEY`, and `TEST_S3_FORCE_PATH_STYLE`, then run `pytest` from `apps/api`. Tests that read the local directory directly are skipped in that mode.
 
 ```bash
 cd apps/api
@@ -276,6 +296,7 @@ npm run build -w web
 | Validators, gap analysis, structural excerpts | `test_field_validator.py`, `test_gap_analyzer.py`, `test_structural_excerpt.py` |
 | Staff sessions | `test_auth.py` |
 | Organization isolation | `test_tenancy.py` |
+| Object storage | `test_object_store.py`, `test_storage.py`, `test_storage_flow.py` |
 
 ## Known limitations and roadmap
 
@@ -287,7 +308,7 @@ These are deliberate boundaries of the current version.
 | Multi-tenancy | Each case belongs to one organization, and Qdrant label search is filtered by that organization. Database row-level security is not built. | Database policies in addition to the application filter |
 | PDF integrity | Changes are detected by comparing with the stored file hash. | Cryptographic PDF seal (PAdES) |
 | Signer identity | Holding the link is the only proof. Identity is not verified. | Optional stronger verification |
-| Storage | Local filesystem | S3-compatible object storage |
+| Storage | Local and S3-compatible backends. Tested with moto and RustFS. AWS S3 and GCS are untested. Invalidated signed packets are retained, and no retention period is set. | Retention rules |
 | Data retention | No automatic deletion. Signer IP addresses and browser details are stored. | Configurable retention rules |
 | CI | Checks run locally | GitHub Actions |
 

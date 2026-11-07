@@ -1,11 +1,15 @@
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Request, UploadFile
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.background import BackgroundTask
 
+from app.api.downloads import content_disposition
 from app.core.container import Container
 from app.domain.certificate import SignerContext, clean_ip, clean_user_agent
 from app.core.deps import get_case_service, get_container
+from app.db.session import get_session
 from app.schemas.case import CaseCreate, CaseRead
 from app.schemas.chat import ChatRequest, FieldUpdateRequest
 from app.schemas.gap import FillAndSignRequest, GapReport, ManualClassifyRequest
@@ -154,15 +158,38 @@ async def download_document(
     case_id: UUID,
     document_id: UUID,
     service: CaseService = Depends(get_case_service),
-) -> FileResponse:
-    path, mime_type, filename = await service.document_file(case_id, document_id)
-    return FileResponse(path, media_type=mime_type, filename=filename)
+    session: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    reader, mime_type, filename = await service.document_file(case_id, document_id)
+    # Release the database connection before a long download starts.
+    try:
+        await session.commit()
+    except Exception:
+        reader.close()
+        raise
+    return StreamingResponse(
+        reader.chunks,
+        media_type=mime_type,
+        headers={
+            "Content-Disposition": content_disposition(filename),
+            "Content-Length": str(reader.size),
+            "Cache-Control": "no-store",
+        },
+        background=BackgroundTask(reader.close),
+    )
 
 
 @router.get("/{case_id}/signed-document")
 async def download_signed_document(
     case_id: UUID,
     service: CaseService = Depends(get_case_service),
-) -> FileResponse:
-    path = await service.signed_pdf(case_id)
-    return FileResponse(path, media_type="application/pdf", filename=path.name)
+) -> Response:
+    data, filename = await service.signed_pdf(case_id)
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": content_disposition(filename),
+            "Cache-Control": "no-store",
+        },
+    )

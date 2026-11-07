@@ -3,7 +3,6 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.core.time import utcnow
 from app.domain.enums import AuditAction, ClassificationSource, DocumentStatus
 from app.models.audit_log import AuditLog
@@ -12,7 +11,7 @@ from app.schemas.process import DocumentTypeSpec
 from app.services.classification_engine import ClassificationEngine
 from app.services.document_processor import DocumentProcessor
 from app.services.learning_store import QdrantLearningStore
-from app.services.storage_paths import resolve_stored
+from app.services.object_store import ObjectStore
 from app.services.structural_excerpt import anchors_from_text, embedding_text
 
 logger = logging.getLogger(__name__)
@@ -24,10 +23,12 @@ class IngestionPipeline:
         processor: DocumentProcessor,
         classifier: ClassificationEngine,
         learning: QdrantLearningStore,
+        store: ObjectStore,
     ) -> None:
         self._processor = processor
         self._classifier = classifier
         self._learning = learning
+        self._store = store
 
     async def process_document(
         self,
@@ -36,8 +37,8 @@ class IngestionPipeline:
         types: list[DocumentTypeSpec],
         organization_id: UUID,
     ) -> None:
-        path = resolve_stored(get_settings().resolved_storage_dir, document.storage_path)
-        extraction = await self._processor.extract(path)
+        async with self._store.local_copy(document.storage_path) as path:
+            extraction = await self._processor.extract(path)
         document.page_count = extraction.page_count
         document.extracted_text = extraction.text or None
         document.error_message = None

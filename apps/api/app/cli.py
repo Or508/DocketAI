@@ -12,6 +12,7 @@ from app.models.organization import Organization
 from app.models.user import User
 from app.models.user_session import UserSession
 from app.services.auth_service import hash_password
+from app.services.storage_migration import migrate_storage
 from app.core.time import utcnow
 
 
@@ -79,7 +80,11 @@ def main() -> None:
     create.add_argument("--display-name", required=True)
     reset = commands.add_parser("set-password")
     reset.add_argument("--email", required=True)
+    migrate = commands.add_parser("migrate-storage")
+    migrate.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    if args.command == "migrate-storage":
+        raise SystemExit(asyncio.run(migrate_storage(dry_run=args.dry_run)))
     get_settings()
     password = _password()
     if args.command == "create-user":

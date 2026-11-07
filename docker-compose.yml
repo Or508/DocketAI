@@ -35,6 +35,44 @@ services:
     volumes:
       - qdrant:/qdrant/storage
 
+  # S3-compatible object storage for local development. MinIO no longer publishes
+  # community images, so this uses RustFS. Credentials below are dev-only defaults.
+  rustfs:
+    image: rustfs/rustfs:1.0.3
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_DEV_ACCESS_KEY:-docket}
+      RUSTFS_SECRET_KEY: ${S3_DEV_SECRET_KEY:-docket-local-dev}
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - objects:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # Creates the private bucket once. Safe to rerun.
+  storage-setup:
+    image: amazon/aws-cli:2.39.2
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_DEV_ACCESS_KEY:-docket}
+      AWS_SECRET_ACCESS_KEY: ${S3_DEV_SECRET_KEY:-docket-local-dev}
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        aws --endpoint-url http://rustfs:9000 s3api head-bucket --bucket docketai 2>/dev/null
+        || aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket docketai
+    restart: "no"
+
   api:
     profiles: ["app"]
     build: ./apps/api
@@ -46,7 +84,13 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-004}
-      STORAGE_DIR: /data/storage
+      STORAGE_BACKEND: s3
+      S3_BUCKET: docketai
+      S3_ENDPOINT_URL: http://rustfs:9000
+      S3_REGION: us-east-1
+      S3_FORCE_PATH_STYLE: "true"
+      S3_ACCESS_KEY_ID: ${S3_DEV_ACCESS_KEY:-docket}
+      S3_SECRET_ACCESS_KEY: ${S3_DEV_SECRET_KEY:-docket-local-dev}
       AUTO_CREATE_SCHEMA: "true"
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
@@ -55,9 +99,9 @@ services:
       SIGNING_LINK_MAX_CHAT_TURNS: ${SIGNING_LINK_MAX_CHAT_TURNS:-40}
     ports:
       - "127.0.0.1:8000:8000"
-    volumes:
-      - storage:/data
     depends_on:
+      storage-setup:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -76,8 +120,6 @@ services:
     build: ./apps/api
     command: ["arq", "app.workers.tasks.WorkerSettings"]
     environment: *app-env
-    volumes:
-      - storage:/data
     depends_on:
       api:
         condition: service_healthy
@@ -94,4 +136,4 @@ volumes:
   pgdata:
   qdrant:
   redisdata:
-  storage:
+  objects:

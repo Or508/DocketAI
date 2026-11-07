@@ -119,6 +119,7 @@ def test_zone_abbreviations() -> None:
     assert january[1].endswith("IST")
 
 
+@pytest.mark.local_storage
 def test_signed_packet_carries_a_certificate(client: TestClient, tmp_path: Path) -> None:
     case_id = _ready(client, tmp_path, name="HIDDEN-CASE-LABEL", client_name="נועה לוי")
     transport = client._transport
@@ -276,7 +277,8 @@ def test_older_packet_has_no_certificate(client: TestClient, tmp_path: Path) -> 
     assert client.get(f"/cases/{case_id}/certificate").status_code == 404
 
 
-def test_field_change_removes_the_certificate(client: TestClient, tmp_path: Path) -> None:
+@pytest.mark.local_storage
+def test_field_change_clears_the_certificate_and_retains_the_file(client: TestClient, tmp_path: Path) -> None:
     case_id = _ready(client, tmp_path, name="Mutable", client_name="Dana")
     signed = _sign_office(client, case_id)
     assert signed.status_code == 200, signed.text
@@ -285,7 +287,7 @@ def test_field_change_removes_the_certificate(client: TestClient, tmp_path: Path
     assert form.is_file()
     changed = client.post(f"/cases/{case_id}/fields", json={"key": "full_name", "value": "Noa Levi"})
     assert changed.status_code == 200, changed.text
-    assert not form.is_file()
+    assert form.is_file()
     cleared = client.portal.call(_column, case_id)
     assert cleared.certificate_data is None
     assert cleared.case_reference == stored.case_reference

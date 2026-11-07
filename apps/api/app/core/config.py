@@ -1,6 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     session_ttl_hours: int = 12
     login_max_failures: int = 5
     login_lock_minutes: int = 15
+    storage_backend: Literal["local", "s3"] = "local"
+    s3_bucket: str = ""
+    s3_region: str = ""
+    s3_endpoint_url: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_force_path_style: bool = False
+    s3_server_side_encryption: str = ""
+    s3_kms_key_id: str = ""
     storage_dir: Path | None = None
     template_dir: Path | None = None
     hebrew_font_path: Path | None = None
@@ -63,6 +72,20 @@ class Settings(BaseSettings):
         self.database_url = _normalize_database_url(self.database_url)
         self.qdrant_url = self.qdrant_url.strip()
         self.gemini_api_key = self.gemini_api_key.strip()
+        self.s3_bucket = self.s3_bucket.strip()
+        self.s3_region = self.s3_region.strip()
+        self.s3_endpoint_url = self.s3_endpoint_url.strip()
+        self.s3_access_key_id = self.s3_access_key_id.strip()
+        self.s3_secret_access_key = self.s3_secret_access_key.strip()
+        self.s3_server_side_encryption = self.s3_server_side_encryption.strip()
+        self.s3_kms_key_id = self.s3_kms_key_id.strip()
+        if self.storage_backend == "s3":
+            if not self.s3_bucket:
+                raise ValueError("s3_bucket is required when storage_backend is s3.")
+            if bool(self.s3_access_key_id) != bool(self.s3_secret_access_key):
+                raise ValueError(
+                    "s3_access_key_id and s3_secret_access_key must both be set or both be blank."
+                )
         return self
 
     @property

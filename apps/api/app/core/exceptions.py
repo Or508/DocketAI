@@ -46,5 +46,15 @@ class RateLimitError(AppError):
         super().__init__(message, status_code=429, code="rate_limited")
 
 
+class StorageUnavailableError(AppError):
+    def __init__(self, message: str = "File storage is unavailable. Try again shortly.") -> None:
+        super().__init__(message, status_code=503, code="storage_unavailable")
+
+
+class SignedFileIntegrityError(AppError):
+    def __init__(self, message: str = "The signed document failed its integrity check.") -> None:
+        super().__init__(message, status_code=500, code="integrity_failed")
+
+
 class ProcessingError(Exception):
     """A file could not be parsed. Stored on the document; not an HTTP error."""

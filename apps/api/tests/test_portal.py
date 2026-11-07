@@ -389,6 +389,7 @@ def test_office_signing_closes_an_open_link(client: TestClient, tmp_path: Path) 
     assert client.portal.call(reason) == "signed_by_office"
 
 
+@pytest.mark.local_storage
 def test_chat_cap_preview_and_closed_portal_routes(client: TestClient, tmp_path: Path) -> None:
     case_id, document_ids = _ready(client, tmp_path)
     created = client.post(f"/cases/{case_id}/signing-links")

@@ -24,12 +24,15 @@ dependencies = [
   "redis>=5.2.1",
   "tzdata>=2024.2",
   "argon2-cffi>=23.1.0",
+  "boto3>=1.36",
+  "botocore>=1.36",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3.4",
   "httpx>=0.28.1",
+  "moto[s3]>=5",
 ]
 
 [build-system]

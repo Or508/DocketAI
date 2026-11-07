@@ -8,6 +8,7 @@ from app.services.fonts import resolve_hebrew_font
 from app.services.gap_analyzer import GapAnalyzer
 from app.services.gemini_client import GoogleGeminiClient
 from app.services.learning_store import QdrantLearningStore
+from app.services.object_store import ObjectStore, build_object_store
 from app.services.pdf_filler import PdfFillerService
 from app.services.pipeline import IngestionPipeline
 from app.services.template_factory import TemplateFactory
@@ -16,6 +17,7 @@ from app.services.template_factory import TemplateFactory
 @dataclass
 class Container:
     settings: Settings
+    store: ObjectStore
     processor: DocumentProcessor
     classifier: ClassificationEngine
     gap_analyzer: GapAnalyzer
@@ -33,14 +35,16 @@ def build_container(settings: Settings | None = None) -> Container:
     processor = DocumentProcessor(max_vision_pages=settings.max_vision_pages)
     classifier = ClassificationEngine(gemini, settings.confidence_threshold)
     learning = QdrantLearningStore(settings, gemini)
+    store = build_object_store(settings)
     return Container(
         settings=settings,
+        store=store,
         processor=processor,
         classifier=classifier,
         gap_analyzer=GapAnalyzer(settings.confidence_threshold),
         pdf_filler=PdfFillerService(font),
         learning=learning,
-        pipeline=IngestionPipeline(processor, classifier, learning),
+        pipeline=IngestionPipeline(processor, classifier, learning, store),
         chat=ChatCollector(gemini),
         templates=TemplateFactory(settings.resolved_template_dir, font),
     )

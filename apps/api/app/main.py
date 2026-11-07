@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 def _ensure_dirs(settings) -> None:
-    settings.resolved_storage_dir.mkdir(parents=True, exist_ok=True)
+    if settings.storage_backend == "local":
+        settings.resolved_storage_dir.mkdir(parents=True, exist_ok=True)
     settings.resolved_template_dir.mkdir(parents=True, exist_ok=True)
     if settings.database_url.startswith("sqlite"):
         raw = settings.database_url.split("///", 1)[-1]

@@ -1,11 +1,12 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from app.core.container import Container
 from app.domain.certificate import SignerContext, clean_ip, clean_user_agent
+from app.api.downloads import content_disposition
 from app.core.deps import bearer_token, get_container, get_portal_service
 from app.core.exceptions import ConflictError
 from app.core.time import utcnow
@@ -115,14 +116,16 @@ async def portal_sign(
 async def portal_download(
     token: str = Depends(bearer_token),
     service: PortalService = Depends(get_portal_service),
-) -> FileResponse:
+) -> Response:
     link, case = await service.resolve(token)
     if link_state(link, case, utcnow()) != "completed":
         raise ConflictError("The signed copy is not available.")
-    path = await service.cases.signed_pdf(case.id)
-    return FileResponse(
-        path,
+    data, _filename = await service.cases.signed_pdf(case.id)
+    return Response(
+        content=data,
         media_type="application/pdf",
-        filename="signed-document.pdf",
-        headers={"Cache-Control": "no-store"},
+        headers={
+            "Content-Disposition": content_disposition("signed-document.pdf"),
+            "Cache-Control": "no-store",
+        },
     )
