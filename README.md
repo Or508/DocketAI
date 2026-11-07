@@ -10,6 +10,7 @@ DocketAI takes a bundle of PDFs and scans, classifies each file against a proces
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![Pytest](https://img.shields.io/badge/pytest-98%20passing-0A9EDC?logo=pytest&logoColor=white)
+[![CI](https://github.com/Or508/DocketAI/actions/workflows/ci.yml/badge.svg)](https://github.com/Or508/DocketAI/actions/workflows/ci.yml)
 
 > **Project status:** DocketAI is a working portfolio system, not a hosted product. Office routes require a staff login. The API stays private behind the Next.js proxies. See [Known limitations](#known-limitations-and-roadmap).
 
@@ -269,6 +270,16 @@ The command refuses to run unless `STORAGE_BACKEND=s3`. It checks each stored ha
 
 The API suite has 98 tests across 18 files. It runs on a temporary SQLite database and needs no external services. moto stands in for S3. To run the same suite against an S3-compatible server such as the compose RustFS, create a bucket and export `TEST_S3_ENDPOINT`, `TEST_S3_BUCKET`, `TEST_S3_REGION`, `TEST_S3_ACCESS_KEY_ID`, `TEST_S3_SECRET_ACCESS_KEY`, and `TEST_S3_FORCE_PATH_STYLE`, then run `pytest` from `apps/api`. Tests that read the local directory directly are skipped in that mode.
 
+GitHub Actions runs the same checks on pushes and pull requests to `main`. The workflow is [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+| Job | What it checks |
+|---|---|
+| `api-tests` | Pytest on Python 3.11 and 3.13, with moto standing in for S3. The job fails below 98 passed tests. |
+| `api-tests-s3` | The same suite against RustFS `1.0.3`. At most five local-directory tests may skip. |
+| `migrations` | One Alembic head, then upgrade, downgrade to base, and upgrade again on Postgres 16. |
+| `web` | `npm ci`, the web typecheck, and the Next.js production build on Node 22. |
+| `compose-smoke` | The app Compose profile boots, the API and worker do not share a storage volume, and a sample PDF uploads, finishes processing, and downloads unchanged. |
+
 ```bash
 cd apps/api
 pytest
@@ -310,7 +321,6 @@ These are deliberate boundaries of the current version.
 | Signer identity | Holding the link is the only proof. Identity is not verified. | Optional stronger verification |
 | Storage | Local and S3-compatible backends. Tested with moto and RustFS. AWS S3 and GCS are untested. Invalidated signed packets are retained, and no retention period is set. | Retention rules |
 | Data retention | No automatic deletion. Signer IP addresses and browser details are stored. | Configurable retention rules |
-| CI | Checks run locally | GitHub Actions |
 
 The Next.js app must sit behind a reverse proxy that overwrites `X-Forwarded-For`. The office and portal proxies send the rightmost entry of that header to the API as the client address.
 

@@ -1,0 +1,222 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# An explicit bash shell adds pipefail, so `pytest | tee` still fails the step.
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-tests:
+    name: API tests (${{ matrix.python-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+
+      - name: Install the API
+        working-directory: apps/api
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run pytest
+        working-directory: apps/api
+        run: python -m pytest -o addopts="" -q -p no:cacheprovider | tee pytest-count.txt
+
+      - name: Require at least 98 passed tests
+        working-directory: apps/api
+        run: |
+          python -c "import pathlib, re, sys; text = pathlib.Path('pytest-count.txt').read_text(encoding='utf-8'); match = re.search(r'(\d+) passed', text); count = int(match.group(1)) if match else 0; print(f'passed={count}'); sys.exit(0 if count >= 98 else 1)"
+
+  api-tests-s3:
+    name: API tests (RustFS)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      TEST_S3_BUCKET: docketai-ci
+      TEST_S3_REGION: us-east-1
+      TEST_S3_ACCESS_KEY_ID: ci-access
+      TEST_S3_SECRET_ACCESS_KEY: ci-secret-not-real
+      TEST_S3_FORCE_PATH_STYLE: "true"
+    services:
+      rustfs:
+        image: rustfs/rustfs:1.0.3
+        ports:
+          - 9000:9000
+        env:
+          RUSTFS_ACCESS_KEY: ci-access
+          RUSTFS_SECRET_KEY: ci-secret-not-real
+        options: >-
+          --health-cmd "curl -fsS http://localhost:9000/health"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+
+      - name: Install the API
+        working-directory: apps/api
+        run: python -m pip install -e ".[dev]"
+
+      - name: Create the CI bucket
+        working-directory: apps/api
+        run: |
+          python -c "import boto3; from botocore.client import Config; client = boto3.client('s3', endpoint_url='http://127.0.0.1:9000', aws_access_key_id='ci-access', aws_secret_access_key='ci-secret-not-real', region_name='us-east-1', config=Config(s3={'addressing_style': 'path'}, connect_timeout=5, read_timeout=30, retries={'max_attempts': 5, 'mode': 'standard'})); client.create_bucket(Bucket='docketai-ci')"
+
+      - name: Run pytest against RustFS
+        working-directory: apps/api
+        run: |
+          python -m pytest -o addopts="" -q -p no:cacheprovider -rs | tee pytest-s3.txt
+          python -c "import pathlib, re, sys; text = pathlib.Path('pytest-s3.txt').read_text(encoding='utf-8'); failed = re.search(r'(\d+) failed', text); errors = re.search(r'(\d+) error', text); skipped = re.search(r'(\d+) skipped', text); skip_count = int(skipped.group(1)) if skipped else 0; print(f'skipped={skip_count}'); bad = (failed and int(failed.group(1)) > 0) or (errors and int(errors.group(1)) > 0) or skip_count > 5; sys.exit(1 if bad else 0)"
+
+  migrations:
+    name: Alembic migrations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql+asyncpg://docket:docket@127.0.0.1:5432/docketai
+    services:
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: docket
+          POSTGRES_PASSWORD: docket
+          POSTGRES_DB: docketai
+        options: >-
+          --health-cmd "pg_isready -U docket -d docketai"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+
+      - name: Install the API
+        working-directory: apps/api
+        run: python -m pip install -e .
+
+      - name: Verify a single Alembic head
+        working-directory: apps/api
+        run: |
+          python -m alembic heads | tee alembic-heads.txt
+          python -c "import pathlib, sys; lines = [line for line in pathlib.Path('alembic-heads.txt').read_text(encoding='utf-8').splitlines() if '(head)' in line]; print(lines); sys.exit(0 if len(lines) == 1 else 1)"
+
+      - name: Upgrade, downgrade, and upgrade again
+        working-directory: apps/api
+        run: |
+          python -m alembic upgrade head
+          python -m alembic downgrade base
+          python -m alembic upgrade head
+
+  web:
+    name: Web typecheck and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install, typecheck, and build
+        run: |
+          npm ci
+          npx tsc --noEmit -p apps/web
+          npm run build -w web
+
+  compose-smoke:
+    name: Compose smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: api-tests
+    env:
+      GEMINI_API_KEY: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Boot the app profile
+        run: docker compose --profile app up -d --build --wait
+
+      - name: Assert api and worker do not share storage
+        run: |
+          docker compose --profile app config --format json > compose-config.json
+          python3 -c "import json, sys; doc = json.load(open('compose-config.json', encoding='utf-8')); services = doc['services'];
+          def mounts(name):
+              return services[name].get('volumes') or []
+          def text(volume):
+              return json.dumps(volume).lower()
+          api = mounts('api'); worker = mounts('worker')
+          shared = [item for item in api if item in worker]
+          storage = [item for item in api + worker if 'storage' in text(item)]
+          print('api_volumes', len(api), 'worker_volumes', len(worker), 'shared', len(shared), 'storage', len(storage))
+          sys.exit(1 if shared or storage else 0)"
+          docker compose --profile app exec -T api python -c "import os, sys; sys.exit(1 if os.path.exists('/data/storage') else 0)"
+
+      - name: Create the CI user and exercise the API
+        run: |
+          password="$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')"
+          echo "::add-mask::$password"
+          export DOCKET_USER_PASSWORD="$password"
+          docker compose --profile app exec -T -e DOCKET_USER_PASSWORD api python -m app.cli create-user --organization CI --email ci@example.com --display-name CI
+          python3 scripts/ci/compose_smoke.py --base http://127.0.0.1:8000 --email ci@example.com
+
+      # The startup banner also names process_case, so match arq's per-job line instead.
+      - name: Assert the worker ran process_case
+        run: |
+          docker compose --profile app logs --no-color worker > worker.log
+          python3 -c "import pathlib, re, sys; text = pathlib.Path('worker.log').read_text(encoding='utf-8', errors='replace'); runs = re.findall(r':process_case\(', text); print(f'worker_jobs={len(runs)}'); sys.exit(0 if runs else 1)"
+
+      - name: Show service logs
+        if: failure()
+        run: docker compose --profile app logs --no-color --tail 200 api worker rustfs storage-setup
+
+      - name: Tear down
+        if: always()
+        run: docker compose --profile app down -v
