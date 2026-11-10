@@ -35,6 +35,13 @@ export interface FieldSpec {
   rtl: boolean;
 }
 
+export type ValueSource = "client" | "document" | "office";
+
+export interface FieldSource {
+  source: ValueSource;
+  document_id: string | null;
+}
+
 export interface ProcessRead {
   key: string;
   name: string;
@@ -140,6 +147,30 @@ export interface GapReport {
   pipeline: PipelineProgress;
 }
 
+export interface FormAnchorRef {
+  document_id: string;
+  filename: string;
+  field_name: string;
+  page: number;
+  rect: number[];
+  match: "exact" | "synonym";
+}
+
+export interface OpenSlot {
+  key: string;
+  label: string;
+  label_he: string | null;
+  anchors: FormAnchorRef[];
+}
+
+export interface UnboundAnchor {
+  document_id: string;
+  filename: string;
+  field_name: string;
+  page: number;
+  empty: boolean;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -220,7 +251,10 @@ export interface CaseWorkspace {
   process: ProcessRead;
   messages: ChatMessage[];
   field_values: Record<string, string>;
+  field_sources: Record<string, FieldSource>;
   missing_fields: FieldSpec[];
+  open_slots: OpenSlot[];
+  unbound_anchors: UnboundAnchor[];
   ready_to_sign: boolean;
   signing_blockers: string[];
   consent_text: string;

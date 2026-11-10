@@ -52,8 +52,16 @@ from app.models.process_definition import ProcessDefinition
 from app.models.signing_link import SigningLink
 from app.schemas.case import CaseAudit, CaseCertificate, CaseCreate, CaseRead
 from app.schemas.chat import ChatMessageRead, ChatRequest, FieldUpdateRequest
-from app.schemas.gap import FillAndSignRequest, GapReport, ManualClassifyRequest, PipelineProgress
-from app.schemas.process import DocumentTypeSpec, FieldSpec, ProcessRead
+from app.schemas.gap import (
+    FillAndSignRequest,
+    FormAnchorRef,
+    GapReport,
+    ManualClassifyRequest,
+    OpenSlot,
+    PipelineProgress,
+    UnboundAnchor,
+)
+from app.schemas.process import DocumentTypeSpec, FieldSource, FieldSpec, ProcessRead, ValueSource
 from app.schemas.workspace import CaseWorkspace, FileRejection, UploadResult
 from app.services.chat_collector import OPENING, ChatTurn
 from app.services.field_validator import missing_required_fields, validate_field
@@ -247,6 +255,7 @@ class CaseService:
         case = await self._get_case(case_id)
         required, optional = _document_specs(case.process_definition)
         catalog = required + optional
+        fields = _field_specs(case.process_definition)
         pending_ids = [
             document.id
             for document in case.documents
@@ -282,6 +291,7 @@ class CaseService:
                     document,
                     catalog,
                     organization_id=case.organization_id,
+                    fields=fields,
                 )
             except ProcessingError as exc:
                 logger.info("Document %s was not readable: %s", document_id, exc)
@@ -295,6 +305,8 @@ class CaseService:
                 document.updated_at = utcnow()
             case.pipeline_completed = index
             await self.session.commit()
+            if document.form_anchors:
+                await self._prefill_from_document(case_id, document_id)
 
         refreshed = await self._get_case(case_id)
         refreshed.pipeline_stage = "auditing"
@@ -306,6 +318,64 @@ class CaseService:
         refreshed.status = _derive_status(refreshed.documents, refreshed.status)
         self._refresh_pipeline(refreshed)
         refreshed.updated_at = utcnow()
+        await self.session.commit()
+
+    async def _prefill_from_document(self, case_id: uuid.UUID, document_id: uuid.UUID) -> None:
+        """Copy filled widget values into empty slots.
+
+        A value is used only when the existing validator accepts it, every widget
+        bound to that slot in this document agrees, and the slot has no value yet.
+        An existing value is never replaced, whether it matches or not.
+        """
+        case = await self._locked_case(case_id)
+        if case is None or case.status == CaseStatus.SIGNED:
+            await self.session.rollback()
+            return
+        document = next((item for item in case.documents if item.id == document_id), None)
+        if document is None or document.status == DocumentStatus.FAILED:
+            await self.session.rollback()
+            return
+        by_key = {spec.key: spec for spec in _field_specs(case.process_definition)}
+        candidates: dict[str, set[str]] = {}
+        for anchor in document.form_anchors or []:
+            key = anchor.get("slot_key")
+            value = anchor.get("value")
+            if not isinstance(key, str) or anchor.get("empty") or not isinstance(value, str):
+                continue
+            spec = by_key.get(key)
+            if spec is None:
+                continue
+            result = validate_field(spec, value)
+            if result.ok:
+                candidates.setdefault(key, set()).add(result.normalized)
+        current = {str(key): str(value) for key, value in (case.field_values or {}).items()}
+        merged = dict(current)
+        filled: list[str] = []
+        for key, values in sorted(candidates.items()):
+            if len(values) != 1 or current.get(key, "").strip():
+                continue
+            merged[key] = next(iter(values))
+            filled.append(key)
+        if not filled:
+            await self.session.rollback()
+            return
+        sources = dict(case.field_sources or {})
+        for key in filled:
+            sources[key] = {"source": "document", "document_id": str(document.id)}
+        case.field_sources = sources
+        case.field_values = merged
+        self._mark_data_completion(case)
+        case.updated_at = utcnow()
+        # The audit row names the slots only; the values are personal data.
+        self.session.add(
+            AuditLog(
+                case_id=case.id,
+                document_id=document.id,
+                action=AuditAction.FIELD_PREFILLED,
+                actor="system",
+                new_value={"fields": filled},
+            )
+        )
         await self.session.commit()
 
     async def _mark_pipeline_failed(self, case_id: uuid.UUID) -> None:
@@ -391,6 +461,7 @@ class CaseService:
         payload: ChatRequest,
         *,
         reject_if_signed: bool = False,
+        source: ValueSource = "office",
     ) -> ChatStart:
         case = await self._get_case(case_id)
         fields = _field_specs(case.process_definition)
@@ -398,7 +469,9 @@ class CaseService:
         message = payload.message.strip()
         await self.session.commit()
         turn = await self.container.chat.respond(fields=fields, values=values, message=message)
-        stamp = await self._commit_chat_turn(case_id, message, turn, reject_if_signed=reject_if_signed)
+        stamp = await self._commit_chat_turn(
+            case_id, message, turn, reject_if_signed=reject_if_signed, source=source
+        )
         return ChatStart(turn=turn, stamp=stamp)
 
     async def chat_finish(
@@ -434,6 +507,7 @@ class CaseService:
         turn: ChatTurn,
         *,
         reject_if_signed: bool = False,
+        source: ValueSource = "office",
     ) -> str:
         case = await self._locked_case(case_id)
         if case is None:
@@ -446,6 +520,7 @@ class CaseService:
         if merged != current and case.status == CaseStatus.SIGNED:
             self._invalidate_signature(case, reason="A field changed after signing.")
             case.status = CaseStatus.FILLING
+        _record_sources(case, current, merged, source)
         case.field_values = merged
         self._mark_data_completion(case)
         history = list(case.chat_history or [])
@@ -474,6 +549,7 @@ class CaseService:
         payload: FieldUpdateRequest,
         *,
         reject_if_signed: bool = False,
+        source: ValueSource = "office",
     ) -> CaseWorkspace:
         case = await self._get_case(case_id)
         if reject_if_signed and case.status == CaseStatus.SIGNED:
@@ -485,11 +561,13 @@ class CaseService:
         result = validate_field(spec, payload.value)
         if not result.ok:
             raise BadRequestError(result.message)
-        merged = {str(key): str(value) for key, value in (case.field_values or {}).items()}
+        current = {str(key): str(value) for key, value in (case.field_values or {}).items()}
+        merged = dict(current)
         merged[spec.key] = result.normalized
         if merged != (case.field_values or {}) and case.status == CaseStatus.SIGNED:
             self._invalidate_signature(case, reason="A field changed after signing.")
             case.status = CaseStatus.FILLING
+        _record_sources(case, current, merged, source)
         case.field_values = merged
         self._mark_data_completion(case)
         self._refresh_pipeline(case)
@@ -561,6 +639,12 @@ class CaseService:
                 rtl_fields.add(spec.pdf_field_name)
 
         packet_key, form_key = signed_keys(case.organization_id, case.id)
+        _record_sources(
+            case,
+            {str(key): str(value) for key, value in (case.field_values or {}).items()},
+            merged,
+            "client" if actor == "signer" else "office",
+        )
         case.field_values = merged
         self._mark_data_completion(case)
         if before_fill is not None:
@@ -759,7 +843,10 @@ class CaseService:
             ),
             messages=[ChatMessageRead.model_validate(item) for item in (case.chat_history or [])],
             field_values=values,
+            field_sources=_field_sources(case),
             missing_fields=missing_required_fields(fields, values),
+            open_slots=_open_slots(case, fields, values),
+            unbound_anchors=_unbound_anchors(case),
             ready_to_sign=not blockers and case.status != CaseStatus.SIGNED,
             signing_blockers=blockers,
             consent_text=OFFICE_CONSENT_TEXT,
@@ -956,3 +1043,70 @@ def _derive_status(documents: list[Document], current: CaseStatus) -> CaseStatus
 def _safe_stem(name: str) -> str:
     cleaned = re.sub(r"[^\w.-]+", "-", name, flags=re.UNICODE).strip("-.")
     return (cleaned or "docket")[:60]
+
+
+def _record_sources(case: Case, before: dict[str, str], after: dict[str, str], source: ValueSource) -> None:
+    """Mark every slot whose value changed with where the new value came from."""
+    changed = [key for key, value in after.items() if before.get(key) != value]
+    if not changed:
+        return
+    sources = dict(case.field_sources or {})
+    for key in changed:
+        sources[key] = {"source": source, "document_id": None}
+    case.field_sources = sources
+
+
+def _field_sources(case: Case) -> dict[str, FieldSource]:
+    sources: dict[str, FieldSource] = {}
+    for key, raw in (case.field_sources or {}).items():
+        try:
+            sources[str(key)] = FieldSource.model_validate(raw)
+        except Exception:
+            continue
+    return sources
+
+
+def _anchor_documents(case: Case) -> list[tuple[Document, dict]]:
+    pairs: list[tuple[Document, dict]] = []
+    for document in sorted(case.documents, key=lambda item: item.created_at):
+        if document.status == DocumentStatus.FAILED:
+            continue
+        for anchor in document.form_anchors or []:
+            if isinstance(anchor, dict):
+                pairs.append((document, anchor))
+    return pairs
+
+
+def _open_slots(case: Case, fields: list[FieldSpec], values: dict[str, str]) -> list[OpenSlot]:
+    """Required slots with no value. Each lists the empty widgets bound to it, if any."""
+    pairs = _anchor_documents(case)
+    slots: list[OpenSlot] = []
+    for spec in missing_required_fields(fields, values):
+        anchors = [
+            FormAnchorRef(
+                document_id=document.id,
+                filename=document.original_filename,
+                field_name=str(anchor.get("field_name", "")),
+                page=int(anchor.get("page", 0)),
+                rect=[float(item) for item in anchor.get("rect", [])],
+                match=anchor.get("match"),
+            )
+            for document, anchor in pairs
+            if anchor.get("slot_key") == spec.key and anchor.get("empty") and anchor.get("match")
+        ]
+        slots.append(OpenSlot(key=spec.key, label=spec.label, label_he=spec.label_he, anchors=anchors))
+    return slots
+
+
+def _unbound_anchors(case: Case) -> list[UnboundAnchor]:
+    return [
+        UnboundAnchor(
+            document_id=document.id,
+            filename=document.original_filename,
+            field_name=str(anchor.get("field_name", "")),
+            page=int(anchor.get("page", 0)),
+            empty=bool(anchor.get("empty")),
+        )
+        for document, anchor in _anchor_documents(case)
+        if not anchor.get("slot_key")
+    ]

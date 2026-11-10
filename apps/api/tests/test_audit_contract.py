@@ -19,7 +19,9 @@ from reportlab.pdfgen import canvas
 from app.schemas.case import CaseAudit, CaseCertificate, CaseRead
 from app.schemas.chat import ChatRequest, FieldUpdateRequest
 from app.schemas.events import CaseProgressEvent, StreamError
-from app.schemas.gap import PipelineProgress
+from app.schemas.gap import FormAnchorRef, OpenSlot, PipelineProgress, UnboundAnchor
+from app.schemas.process import FieldSource
+from app.schemas.workspace import CaseWorkspace
 from app.schemas.portal import PortalProcess, PortalSeal, PortalSignRequest, PortalView, SigningLinkCreated, SigningLinkRead
 
 _PNG = base64.b64decode(
@@ -40,6 +42,11 @@ _PAIRS = {
     "PortalSeal": PortalSeal,
     "PortalView": PortalView,
     "PortalSignRequest": PortalSignRequest,
+    "FieldSource": FieldSource,
+    "FormAnchorRef": FormAnchorRef,
+    "OpenSlot": OpenSlot,
+    "UnboundAnchor": UnboundAnchor,
+    "CaseWorkspace": CaseWorkspace,
 }
 
 

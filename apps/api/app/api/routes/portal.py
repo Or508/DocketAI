@@ -55,7 +55,7 @@ async def portal_fields(
     opened: tuple[SigningLink, Case, PortalService] = Depends(_open_link),
 ) -> PortalView:
     link, case, service = opened
-    await service.cases.set_field(case.id, payload, reject_if_signed=True)
+    await service.cases.set_field(case.id, payload, reject_if_signed=True, source="client")
     stored = await service.cases._get_case(case.id)
     current = await service.session.get(SigningLink, link.id)
     assert current is not None
@@ -87,6 +87,7 @@ async def portal_chat(
             service.scope,
             render=render,
             reject_if_signed=True,
+            source="client",
         ),
         media_type="text/event-stream",
         headers=_STREAM_HEADERS,

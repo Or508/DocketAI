@@ -17,6 +17,11 @@ _CASE_COLUMNS = {
     "pipeline_message": "VARCHAR(240) DEFAULT '' NOT NULL",
     "pipeline_completed": "INTEGER DEFAULT 0 NOT NULL",
     "pipeline_total": "INTEGER DEFAULT 0 NOT NULL",
+    "field_sources": "JSON DEFAULT '{}' NOT NULL",
+}
+
+_DOCUMENT_COLUMNS = {
+    "form_anchors": "JSON",
 }
 
 
@@ -36,6 +41,11 @@ def _add_missing_case_columns(sync_conn) -> None:
     if "organization_id" not in existing:
         kind = "UUID" if sync_conn.dialect.name == "postgresql" else "CHAR(32)"
         sync_conn.execute(text(f"ALTER TABLE cases ADD COLUMN organization_id {kind}"))
+    if "documents" in tables:
+        present = {column["name"] for column in inspect(sync_conn).get_columns("documents")}
+        for name, ddl in _DOCUMENT_COLUMNS.items():
+            if name not in present:
+                sync_conn.execute(text(f"ALTER TABLE documents ADD COLUMN {name} {ddl}"))
 
 
 async def ensure_default_organization() -> None:

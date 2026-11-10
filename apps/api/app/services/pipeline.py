@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from uuid import UUID
 
@@ -7,11 +8,13 @@ from app.core.time import utcnow
 from app.domain.enums import AuditAction, ClassificationSource, DocumentStatus
 from app.models.audit_log import AuditLog
 from app.models.document import Document
-from app.schemas.process import DocumentTypeSpec
+from app.domain.form_anchors import bind_widget
+from app.schemas.process import DocumentTypeSpec, FieldSpec
 from app.services.classification_engine import ClassificationEngine
 from app.services.document_processor import DocumentProcessor
 from app.services.learning_store import QdrantLearningStore
 from app.services.object_store import ObjectStore
+from app.services.pdf_filler import read_form_widgets
 from app.services.structural_excerpt import anchors_from_text, embedding_text
 
 logger = logging.getLogger(__name__)
@@ -36,9 +39,12 @@ class IngestionPipeline:
         document: Document,
         types: list[DocumentTypeSpec],
         organization_id: UUID,
+        fields: list[FieldSpec] | None = None,
     ) -> None:
         async with self._store.local_copy(document.storage_path) as path:
             extraction = await self._processor.extract(path)
+            if fields is not None and document.mime_type == "application/pdf":
+                document.form_anchors = await _form_anchors(path, fields, document.id)
         document.page_count = extraction.page_count
         document.extracted_text = extraction.text or None
         document.error_message = None
@@ -80,3 +86,27 @@ class IngestionPipeline:
             result.confidence,
             result.needs_human_review,
         )
+
+
+async def _form_anchors(path, fields: list[FieldSpec], document_id: UUID) -> list[dict] | None:
+    """Record each text widget and the slot it binds to. A read failure leaves no anchors."""
+    try:
+        readings = await asyncio.to_thread(read_form_widgets, path)
+    except Exception:
+        logger.warning("Could not read form widgets on document %s", document_id)
+        return None
+    anchors: list[dict] = []
+    for reading in readings:
+        binding = bind_widget(reading.field_name, fields)
+        anchors.append(
+            {
+                "field_name": reading.field_name,
+                "page": reading.page_index,
+                "rect": list(reading.rect),
+                "empty": reading.empty,
+                "value": None if reading.empty else reading.value,
+                "slot_key": binding.key if binding else None,
+                "match": binding.match if binding else None,
+            }
+        )
+    return anchors

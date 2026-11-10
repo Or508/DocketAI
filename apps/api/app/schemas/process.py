@@ -1,4 +1,5 @@
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,6 +24,14 @@ class FieldSpec(BaseModel):
     pdf_field_name: str = Field(min_length=1, max_length=64)
     required: bool = True
     rtl: bool = False
+
+
+ValueSource = Literal["client", "document", "office"]
+
+
+class FieldSource(BaseModel):
+    source: ValueSource
+    document_id: UUID | None = None
 
 
 class ProcessRead(BaseModel):

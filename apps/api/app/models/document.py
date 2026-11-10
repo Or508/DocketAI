@@ -1,13 +1,13 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import utcnow
 from app.db.base import Base
 from app.domain.enums import ClassificationSource, DocumentStatus
-from app.models.columns import new_uuid, sa_enum
+from app.models.columns import JsonList, new_uuid, sa_enum
 
 
 class Document(Base):
@@ -43,6 +43,8 @@ class Document(Base):
     summary: Mapped[str | None] = mapped_column(String(500), nullable=True)
     rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Text widgets of an uploaded AcroForm: name, page, rect, emptiness and the bound slot.
+    form_anchors: Mapped[JsonList | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

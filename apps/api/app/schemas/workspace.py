@@ -2,8 +2,8 @@ from pydantic import BaseModel, Field
 
 from app.schemas.case import CaseRead
 from app.schemas.chat import ChatMessageRead
-from app.schemas.gap import GapReport
-from app.schemas.process import FieldSpec, ProcessRead
+from app.schemas.gap import GapReport, OpenSlot, UnboundAnchor
+from app.schemas.process import FieldSource, FieldSpec, ProcessRead
 
 
 class FileRejection(BaseModel):
@@ -17,7 +17,10 @@ class CaseWorkspace(BaseModel):
     process: ProcessRead
     messages: list[ChatMessageRead]
     field_values: dict[str, str]
+    field_sources: dict[str, FieldSource] = Field(default_factory=dict)
     missing_fields: list[FieldSpec]
+    open_slots: list[OpenSlot] = Field(default_factory=list)
+    unbound_anchors: list[UnboundAnchor] = Field(default_factory=list)
     ready_to_sign: bool
     signing_blockers: list[str]
     consent_text: str

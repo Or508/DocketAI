@@ -12,6 +12,7 @@ from app.domain.case_scope import CaseScope
 from app.schemas.chat import ChatRequest
 from app.schemas.events import StreamError
 from app.services.case_service import CaseService
+from app.schemas.process import ValueSource
 
 logger = logging.getLogger(__name__)
 _DONE = object()
@@ -40,6 +41,7 @@ async def iter_chat_stream(
     *,
     render: Callable[[CaseService, UUID], Awaitable[BaseModel]] | None = None,
     reject_if_signed: bool = False,
+    source: ValueSource = "office",
 ) -> AsyncIterator[str]:
     try:
         async with session_scope() as session:
@@ -47,6 +49,7 @@ async def iter_chat_stream(
                 case_id,
                 payload,
                 reject_if_signed=reject_if_signed,
+                source=source,
             )
         draft = start.turn.reply
         streamed = ""

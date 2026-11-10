@@ -31,3 +31,4 @@ class AuditAction(str, Enum):
     SIGNATURE_INVALIDATED = "signature_invalidated"
     SIGNING_LINK_CREATED = "signing_link_created"
     SIGNING_LINK_REVOKED = "signing_link_revoked"
+    FIELD_PREFILLED = "field_prefilled"

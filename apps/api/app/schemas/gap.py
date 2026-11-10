@@ -67,6 +67,34 @@ class GapReport(BaseModel):
     pipeline: PipelineProgress = Field(default_factory=PipelineProgress)
 
 
+class FormAnchorRef(BaseModel):
+    document_id: UUID
+    filename: str
+    field_name: str
+    page: int
+    rect: list[float]
+    match: Literal["exact", "synonym"]
+
+
+class OpenSlot(BaseModel):
+    """A required field with no value yet, and any empty widgets bound to it."""
+
+    key: str
+    label: str
+    label_he: str | None = None
+    anchors: list[FormAnchorRef] = Field(default_factory=list)
+
+
+class UnboundAnchor(BaseModel):
+    """A widget that matched no slot. Shown for information; it never becomes a question."""
+
+    document_id: UUID
+    filename: str
+    field_name: str
+    page: int
+    empty: bool
+
+
 class ManualClassifyRequest(BaseModel):
     document_id: UUID
     document_type: str = Field(min_length=1, max_length=64)

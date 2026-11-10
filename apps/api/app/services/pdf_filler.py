@@ -28,6 +28,59 @@ class SignedArtifact:
     total_pages: int
 
 
+_TEXT_WIDGET = int(getattr(fitz, "PDF_WIDGET_TYPE_TEXT", 7))
+_MAX_WIDGETS = 500
+
+
+@dataclass(frozen=True)
+class WidgetReading:
+    """One text widget of an uploaded AcroForm, read without changing the file."""
+
+    field_name: str
+    page_index: int
+    rect: tuple[float, float, float, float]
+    value: str | None
+
+    @property
+    def empty(self) -> bool:
+        return self.value is None or self.value == ""
+
+
+def read_form_widgets(path: Path) -> list[WidgetReading]:
+    """Read the text widgets of a PDF through page.widgets() only.
+
+    Only text widgets are read, because the slots they bind to are text values;
+    a checkbox's "Off" is not an empty text field. Filling stays in
+    PdfFillerService.fill_and_sign.
+    """
+    readings: list[WidgetReading] = []
+    document = fitz.open(path)
+    try:
+        for index, page in enumerate(document):
+            for widget in page.widgets() or []:
+                if int(widget.field_type or 0) != _TEXT_WIDGET:
+                    continue
+                name = (widget.field_name or "").strip()
+                if not name:
+                    continue
+                raw = widget.field_value
+                value = None if raw is None else str(raw)
+                box = fitz.Rect(widget.rect)
+                readings.append(
+                    WidgetReading(
+                        field_name=name[:200],
+                        page_index=index,
+                        rect=(round(box.x0, 2), round(box.y0, 2), round(box.x1, 2), round(box.y1, 2)),
+                        value=value,
+                    )
+                )
+                if len(readings) >= _MAX_WIDGETS:
+                    return readings
+    finally:
+        document.close()
+    return readings
+
+
 def decode_signature_png(payload: str) -> bytes:
     raw_payload = payload.strip()
     if raw_payload.startswith("data:"):

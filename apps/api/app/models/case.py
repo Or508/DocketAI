@@ -31,6 +31,8 @@ class Case(Base):
         sa_enum(CaseStatus), default=CaseStatus.DRAFT, nullable=False
     )
     field_values: Mapped[JsonDict] = mapped_column(JSON, default=dict)
+    # Per slot key: {"source": "client" | "document" | "office", "document_id": str | None}.
+    field_sources: Mapped[JsonDict] = mapped_column(JSON, default=dict, nullable=False)
     chat_history: Mapped[JsonList] = mapped_column(JSON, default=list)
     output_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     signer_verification_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
