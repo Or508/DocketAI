@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     return response;
   } catch {
     return NextResponse.json(
-      { detail: "The office service could not be reached." },
+      { detail: "לא ניתן להגיע לשירות המשרד." },
       { status: 502, headers: { "Cache-Control": "no-store" } },
     );
   }

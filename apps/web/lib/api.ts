@@ -2,7 +2,10 @@ import type {
   CaseRead,
   CaseWorkspace,
   ChatRequest,
+  DocumentRoleRead,
   FieldUpdateRequest,
+  FillReport,
+  IntakeSummary,
   ProcessRead,
   SigningLinkCreated,
   SigningLinkRead,
@@ -68,11 +71,20 @@ export const api = {
   createCase: (body: { name: string; process_key: string; client_name?: string }) =>
     request<CaseRead>("/cases", { method: "POST", body: JSON.stringify(body) }),
   workspace: (caseId: string) => request<CaseWorkspace>(`/cases/${caseId}`),
-  upload: (caseId: string, files: File[]) => {
+  upload: (
+    caseId: string,
+    files: File[],
+    options?: { documentType?: string; role?: "form" | "evidence"; replaceExisting?: boolean },
+  ) => {
     const body = new FormData();
     for (const file of files) body.append("files", file, file.name);
+    if (options?.documentType) body.append("document_type", options.documentType);
+    if (options?.role) body.append("role", options.role);
+    body.append("replace_existing", options?.replaceExisting ? "true" : "false");
     return request<UploadResult>(`/cases/${caseId}/upload`, { method: "POST", body });
   },
+  deleteDocument: (caseId: string, documentId: string) =>
+    request<CaseWorkspace>(`/cases/${caseId}/documents/${documentId}`, { method: "DELETE" }),
   classify: (caseId: string, documentId: string, documentType: string) =>
     request<CaseWorkspace>(`/cases/${caseId}/classify-manual`, {
       method: "POST",
@@ -104,6 +116,14 @@ export const api = {
   signingLink: (caseId: string) => request<SigningLinkRead>(`/cases/${caseId}/signing-link`),
   revokeSigningLink: (caseId: string) =>
     request<void>(`/cases/${caseId}/signing-link`, { method: "DELETE" }),
+  intake: (caseId: string) => request<IntakeSummary>(`/cases/${caseId}/intake`),
+  fillReport: (caseId: string, documentId: string) =>
+    request<FillReport>(`/cases/${caseId}/documents/${documentId}/fill-report`),
+  setDocumentRole: (caseId: string, documentId: string, role: "evidence" | "form", displayTitle?: string) =>
+    request<DocumentRoleRead>(`/cases/${caseId}/documents/${documentId}/role`, {
+      method: "PUT",
+      body: JSON.stringify({ role, display_title: displayTitle ?? null }),
+    }),
 };
 
 export function signedDocumentUrl(caseId: string) {
@@ -116,6 +136,10 @@ export function certificateUrl(caseId: string) {
 
 export function documentFileUrl(caseId: string, documentId: string) {
   return `${base}/cases/${caseId}/documents/${documentId}/file`;
+}
+
+export function filledFormUrl(caseId: string, documentId: string) {
+  return `${base}/cases/${caseId}/documents/${documentId}/filled-preview`;
 }
 
 async function readChatStream(

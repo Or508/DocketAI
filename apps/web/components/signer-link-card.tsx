@@ -5,9 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ApiError, api } from "@/lib/api";
+import { hebrewOfficeError } from "@/lib/hebrew";
 
 function when(value: string) {
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat("he-IL", {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: "Asia/Jerusalem",
@@ -28,7 +29,7 @@ export function SignerLinkCard({ caseId }: { caseId: string }) {
         setLink(null);
         return;
       }
-      setNote(error instanceof Error ? error.message : "The signing link could not be loaded.");
+      setNote(hebrewOfficeError(error));
     }
   }, [caseId]);
 
@@ -44,7 +45,7 @@ export function SignerLinkCard({ caseId }: { caseId: string }) {
       setFreshUrl(created.url);
       await load();
     } catch (error) {
-      setNote(error instanceof Error ? error.message : "The link could not be created.");
+      setNote(hebrewOfficeError(error));
     } finally {
       setBusy(false);
     }
@@ -53,7 +54,7 @@ export function SignerLinkCard({ caseId }: { caseId: string }) {
   async function copy() {
     if (!freshUrl) return;
     await navigator.clipboard.writeText(freshUrl);
-    setNote("Copied.");
+    setNote("הקישור הועתק.");
   }
 
   async function revoke() {
@@ -64,49 +65,49 @@ export function SignerLinkCard({ caseId }: { caseId: string }) {
       setFreshUrl(null);
       await load();
     } catch (error) {
-      setNote(error instanceof Error ? error.message : "The link could not be revoked.");
+      setNote(hebrewOfficeError(error));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <section className="rounded-lg border border-line bg-[#fbf8f2] shadow-card">
+    <section className="rounded-lg border-2 border-tide bg-white shadow-card">
       <div className="border-b border-line px-4 py-4">
-        <p className="text-[11px] uppercase tracking-[0.18em] text-tide">Signer</p>
-        <h2 className="font-serif text-2xl">Magic link</h2>
+        <h2 className="font-serif text-2xl">שליחה לאישור וחתימת לקוח</h2>
+        <p className="mt-2 text-sm leading-6 text-ink">הלקוח בודק את הפרטים האישיים וחותם. הוא לא ממלא את הטופס.</p>
       </div>
       <div className="space-y-3 px-4 py-4 text-sm">
         {link ? (
           <p>
             {link.state === "open"
-              ? `Open until ${when(link.expires_at)}`
+              ? `פתוח עד ${when(link.expires_at)}`
               : link.state === "completed"
-                ? "The signer has finished."
-                : "This link is no longer active."}
+                ? "הלקוח חתם."
+                : "הקישור כבר לא פעיל."}
           </p>
         ) : (
-          <p className="text-mist">No signing link yet.</p>
+          <p className="text-mist">עדיין אין קישור.</p>
         )}
         {freshUrl ? (
           <div className="space-y-2">
-            <p className="text-xs text-mist">This address is shown only once.</p>
+            <p className="text-xs text-mist">הכתובת מוצגת פעם אחת.</p>
             <p dir="auto" className="break-all rounded-md border border-line bg-white px-3 py-2">
               {freshUrl}
             </p>
             <Button type="button" variant="outline" onClick={() => void copy()}>
-              Copy link
+              העתקת הקישור
             </Button>
           </div>
         ) : null}
         {note ? <p className="text-clay">{note}</p> : null}
         <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={() => void create()} disabled={busy}>
-            Create link
+          <Button type="button" className="w-full" onClick={() => void create()} disabled={busy}>
+            {freshUrl ? "קישור חדש" : "יצירת קישור לחתימה"}
           </Button>
           {link?.state === "open" ? (
             <Button type="button" variant="danger" onClick={() => void revoke()} disabled={busy}>
-              Revoke
+              ביטול הקישור
             </Button>
           ) : null}
         </div>

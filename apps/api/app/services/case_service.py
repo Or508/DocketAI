@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import os
@@ -41,7 +42,9 @@ from app.domain.enums import (
     ClassificationSource,
     DocumentStatus,
 )
+from app.domain.provenance import INTAKE_PROMPT_EN, INTAKE_PROMPT_HE, why_items
 from app.domain.readiness import signing_blockers
+from app.domain.slot_reading import apply_proposals, read_document, retract_document
 from app.domain.storage_keys import document_key, signed_keys
 from app.domain.signing_links import as_utc
 from app.domain.text_layout import contains_hebrew
@@ -52,6 +55,18 @@ from app.models.process_definition import ProcessDefinition
 from app.models.signing_link import SigningLink
 from app.schemas.case import CaseAudit, CaseCertificate, CaseCreate, CaseRead
 from app.schemas.chat import ChatMessageRead, ChatRequest, FieldUpdateRequest
+from app.schemas.forms import (
+    DocumentReadingReport,
+    DocumentRoleRead,
+    DocumentRoleUpdate,
+    FillReport,
+    FillReportField,
+    IntakeForm,
+    IntakeSummary,
+    SlotConflict,
+    SlotHit,
+    SlotSkip,
+)
 from app.schemas.gap import (
     FillAndSignRequest,
     FormAnchorRef,
@@ -65,11 +80,11 @@ from app.schemas.process import DocumentTypeSpec, FieldSource, FieldSpec, Proces
 from app.schemas.workspace import CaseWorkspace, FileRejection, UploadResult
 from app.services.chat_collector import OPENING, ChatTurn
 from app.services.field_validator import missing_required_fields, validate_field
-from app.services.pdf_filler import SignedArtifact, decode_signature_png
+from app.services.pdf_filler import FilledForm, SignedArtifact, decode_signature_png
 from app.services.object_store import ObjectMissingError, ObjectReader
 from app.services.structural_excerpt import anchors_from_text, structural_signature
 from app.services.preflight import preflight
-from app.services.uploads import store_upload
+from app.services.uploads import normalize_image, store_upload, stored_suffix
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +158,15 @@ class CaseService:
         self,
         case_id: uuid.UUID,
         files: list[UploadFile],
+        document_type: str | None = None,
+        role: str | None = None,
+        replace_existing: bool = False,
     ) -> tuple[UploadResult, bool]:
+        """Store the files. A document type or role named with the upload is the office's
+        own choice: it is kept whatever automatic classification would have said, and it
+        is applied to a file this case already holds. With replace_existing, the files
+        that sat in that drawer before are removed once a new one is in.
+        """
         if not files:
             raise BadRequestError("Choose at least one file.")
         limit = self.container.settings.max_files_per_upload
@@ -151,11 +174,16 @@ class CaseService:
             raise BadRequestError(f"Upload at most {limit} files at a time.")
 
         case = await self._get_case(case_id)
-        known_hashes = {document.content_hash for document in case.documents}
+        chosen_type = _drawer_type(case, document_type)
+        chosen_role = _drawer_role(role)
+        held = {document.content_hash: document.id for document in case.documents}
+        repeated: list[uuid.UUID] = []
+        known_hashes = set(held)
         accepted: list[str] = []
         skipped: list[str] = []
         rejected: list[FileRejection] = []
         created_keys: list[str] = []
+        removed_keys: list[str] = []
 
         try:
             with tempfile.TemporaryDirectory() as work:
@@ -176,6 +204,8 @@ class CaseService:
                     if stored.content_hash in known_hashes:
                         os.remove(stored.storage_path)
                         skipped.append(stored.original_filename)
+                        if stored.content_hash in held:
+                            repeated.append(held[stored.content_hash])
                         continue
                     try:
                         await preflight(
@@ -189,30 +219,50 @@ class CaseService:
                         os.remove(stored.storage_path)
                         rejected.append(FileRejection(filename=stored.original_filename, reason=exc.message))
                         continue
+                    try:
+                        local, mime = await asyncio.to_thread(
+                            normalize_image, Path(stored.storage_path), stored.mime_type
+                        )
+                    except Exception:
+                        if os.path.exists(stored.storage_path):
+                            os.remove(stored.storage_path)
+                        rejected.append(
+                            FileRejection(
+                                filename=stored.original_filename,
+                                reason=f"{stored.original_filename} could not be read as an image.",
+                            )
+                        )
+                        continue
                     known_hashes.add(stored.content_hash)
-                    key = document_key(
-                        case.organization_id,
-                        case.id,
-                        Path(stored.original_filename).suffix.lower(),
-                    )
+                    key = document_key(case.organization_id, case.id, stored_suffix(mime))
                     created_keys.append(key)
-                    with Path(stored.storage_path).open("rb") as handle:
-                        await self.container.store.upload_file(key, handle, stored.mime_type)
-                    os.remove(stored.storage_path)
+                    size = local.stat().st_size
+                    with local.open("rb") as handle:
+                        await self.container.store.upload_file(key, handle, mime)
+                    os.remove(local)
                     self.session.add(
                         Document(
                             case_id=case.id,
                             original_filename=stored.original_filename,
                             storage_path=key,
-                            mime_type=stored.mime_type,
-                            file_size=stored.file_size,
+                            mime_type=mime,
+                            file_size=size,
                             content_hash=stored.content_hash,
                             status=DocumentStatus.UPLOADED,
-                            classification_source=ClassificationSource.PENDING,
+                            document_type=chosen_type,
+                            confidence=1.0 if chosen_type else None,
+                            classification_source=(
+                                ClassificationSource.HUMAN if chosen_type else ClassificationSource.PENDING
+                            ),
+                            role=chosen_role or "evidence",
                         )
                     )
                     accepted.append(stored.original_filename)
 
+                if replace_existing and (accepted or repeated) and case.status != CaseStatus.SIGNED:
+                    removed_keys = self._remove_documents(
+                        case, _drawer_occupants(case, chosen_type, chosen_role, keep=set(repeated))
+                    )
                 if accepted:
                     self._invalidate_signature(case, reason="A new file was uploaded after signing.")
                     case.status = CaseStatus.PROCESSING
@@ -220,6 +270,10 @@ class CaseService:
                     case.pipeline_message = "Parsing"
                     case.pipeline_completed = 0
                     case.pipeline_total = len(accepted)
+                    case.updated_at = utcnow()
+                elif removed_keys:
+                    case.status = _derive_status(case.documents, case.status)
+                    self._refresh_pipeline(case)
                     case.updated_at = utcnow()
                 await self.session.commit()
         except Exception:
@@ -230,7 +284,12 @@ class CaseService:
                 except Exception:
                     logger.exception("Could not delete object %s after a failed upload", key)
             raise
-        self.session.expire(case, ["documents"])
+        await self._delete_objects(removed_keys)
+        for document_id in dict.fromkeys(repeated):
+            await self._file_existing(case_id, document_id, chosen_type, chosen_role)
+        if removed_keys:
+            await self._reread(case_id)
+        self.session.expire_all()
         refreshed = await self._get_case(case_id)
         result = UploadResult(
             workspace=self._workspace(refreshed),
@@ -238,7 +297,41 @@ class CaseService:
             skipped_duplicates=skipped,
             rejected=rejected,
         )
-        return result, bool(accepted)
+        return result, bool(accepted) or _has_stalled_documents(refreshed)
+
+    async def _file_existing(
+        self,
+        case_id: uuid.UUID,
+        document_id: uuid.UUID,
+        chosen_type: str | None,
+        chosen_role: str | None,
+    ) -> None:
+        """Apply the drawer the office picked to a file the case already holds."""
+        case = await self._get_case(case_id)
+        document = next((item for item in case.documents if item.id == document_id), None)
+        if document is None or case.status == CaseStatus.SIGNED:
+            return
+        waiting = document.status in {DocumentStatus.UPLOADED, DocumentStatus.PROCESSING}
+        if chosen_type is not None:
+            if waiting:
+                # Ingestion has not finished with this file: it keeps this label when it does.
+                document.document_type = chosen_type
+                document.confidence = 1.0
+                document.classification_source = ClassificationSource.HUMAN
+                await self.session.commit()
+            elif document.document_type != chosen_type or document.status != DocumentStatus.CLASSIFIED:
+                await self.classify_manual(
+                    case_id, ManualClassifyRequest(document_id=document_id, document_type=chosen_type)
+                )
+        if chosen_role is not None and document.role != chosen_role:
+            if waiting:
+                document.role = chosen_role
+                await self.session.commit()
+                return
+            try:
+                await self.set_document_role(case_id, document_id, DocumentRoleUpdate(role=chosen_role))
+            except ConflictError as exc:
+                logger.info("Role %s not applied to document %s: %s", chosen_role, document_id, exc.message)
 
     async def run_ingestion(self, case_id: uuid.UUID) -> None:
         try:
@@ -282,6 +375,12 @@ class CaseService:
                 DocumentStatus.PROCESSING,
             }:
                 continue
+            # A type the office chose with the upload outranks whatever the reader finds.
+            chosen = (
+                document.document_type
+                if document.classification_source == ClassificationSource.HUMAN and document.document_type
+                else None
+            )
             document.status = DocumentStatus.PROCESSING
             document.updated_at = utcnow()
             await self.session.commit()
@@ -292,6 +391,8 @@ class CaseService:
                     catalog,
                     organization_id=case.organization_id,
                     fields=fields,
+                    layout=case.process_definition.layout,
+                    classify=chosen is None,
                 )
             except ProcessingError as exc:
                 logger.info("Document %s was not readable: %s", document_id, exc)
@@ -303,10 +404,36 @@ class CaseService:
                 document.status = DocumentStatus.FAILED
                 document.error_message = "This file could not be processed."
                 document.updated_at = utcnow()
+            if chosen is not None:
+                unread = document.status == DocumentStatus.FAILED
+                document.document_type = chosen
+                document.confidence = 1.0
+                document.classification_source = ClassificationSource.HUMAN
+                document.status = DocumentStatus.CLASSIFIED
+                document.error_message = None
+                if unread:
+                    document.rationale = "Filed by the office. Its text could not be read."
+                self.session.add(
+                    AuditLog(
+                        case_id=case_id,
+                        document_id=document.id,
+                        action=AuditAction.MANUAL_CLASSIFY,
+                        actor="office",
+                        new_value={"document_type": chosen, "confidence": 1.0, "at_upload": True},
+                    )
+                )
+            if document.role == "form" and (
+                document.mime_type != "application/pdf" or not document.form_anchors
+            ):
+                # Nothing can be placed on a file with no readable form fields.
+                document.role = "evidence"
             case.pipeline_completed = index
             await self.session.commit()
+            classified = document.status == DocumentStatus.CLASSIFIED
             if document.form_anchors:
                 await self._prefill_from_document(case_id, document_id)
+            if classified:
+                await self._read_slots_from_document(case_id, document_id)
 
         refreshed = await self._get_case(case_id)
         refreshed.pipeline_stage = "auditing"
@@ -414,6 +541,8 @@ class CaseService:
             "confidence": document.confidence,
             "status": document.status.value,
         }
+        # What this file supplied under its old label has to be earned again.
+        self._retract(case, [document])
         document.document_type = doc_type
         document.confidence = 1.0
         document.status = DocumentStatus.CLASSIFIED
@@ -448,7 +577,181 @@ class CaseService:
         self._refresh_pipeline(case)
         case.updated_at = utcnow()
         await self.session.commit()
-        return self._workspace(case)
+        await self._reread(case_id)
+        return self._workspace(await self._get_case(case_id))
+
+    async def delete_document(self, case_id: uuid.UUID, document_id: uuid.UUID) -> CaseWorkspace:
+        """Remove a file from the case, with the details it supplied.
+
+        Details the office or the client typed stay. The files that remain are read
+        again, so one of them can supply a slot the removed file had taken.
+        """
+        case = await self._get_case(case_id)
+        document = next((item for item in case.documents if item.id == document_id), None)
+        if document is None:
+            raise NotFoundError("Document not found on this case.")
+        if case.status == CaseStatus.SIGNED:
+            raise ConflictError("This case is already signed.")
+        if document.status == DocumentStatus.PROCESSING and not _is_stalled(document):
+            raise ConflictError("This document is still processing.")
+        keys = self._remove_documents(case, [document])
+        self._invalidate_signature(case, reason="A file was removed after signing.")
+        case.status = _derive_status(case.documents, case.status)
+        self._refresh_pipeline(case)
+        case.updated_at = utcnow()
+        await self.session.commit()
+        await self._delete_objects(keys)
+        await self._reread(case_id)
+        return self._workspace(await self._get_case(case_id))
+
+    def _retract(self, case: Case, documents: list[Document]) -> None:
+        values = {str(key): str(value) for key, value in (case.field_values or {}).items()}
+        sources = {
+            str(key): dict(value) for key, value in (case.field_sources or {}).items() if isinstance(value, dict)
+        }
+        for document in documents:
+            values, sources = retract_document(values, sources, str(document.id))
+        case.field_values = values
+        case.field_sources = sources
+        self._mark_data_completion(case)
+
+    def _remove_documents(self, case: Case, documents: list[Document]) -> list[str]:
+        """Drop the rows and what they supplied. Returns the stored objects to delete after commit."""
+        keys: list[str] = []
+        self._retract(case, documents)
+        for document in documents:
+            keys.append(document.storage_path)
+            self.session.add(
+                AuditLog(
+                    case_id=case.id,
+                    action=AuditAction.DOCUMENT_REMOVED,
+                    actor=self.scope.actor,
+                    previous_value={
+                        "document_id": str(document.id),
+                        "document_type": document.document_type,
+                        "role": document.role,
+                        "content_hash": document.content_hash,
+                    },
+                )
+            )
+            case.documents.remove(document)
+        return keys
+
+    async def _delete_objects(self, keys: list[str]) -> None:
+        for key in keys:
+            try:
+                await self.container.store.delete_file(key)
+            except Exception:
+                logger.exception("Could not delete object %s of a removed document", key)
+
+    async def _reread(self, case_id: uuid.UUID) -> None:
+        """Run the closed readers again over every file the case holds, oldest first."""
+        self.session.expire_all()
+        case = await self._get_case(case_id)
+        ordered = sorted(case.documents, key=lambda item: (item.created_at, str(item.id)))
+        todo = [
+            (item.id, bool(item.form_anchors), item.status == DocumentStatus.CLASSIFIED) for item in ordered
+        ]
+        for document_id, anchored, classified in todo:
+            if anchored:
+                await self._prefill_from_document(case_id, document_id)
+            if classified:
+                await self._read_slots_from_document(case_id, document_id)
+        case = await self._locked_case(case_id)
+        if case is None:
+            await self.session.rollback()
+            return
+        self._refresh_pipeline(case)
+        await self.session.commit()
+
+    async def _read_slots_from_document(self, case_id: uuid.UUID, document_id: uuid.UUID) -> None:
+        """Write empty slots from a classified document, and only the slots that type supplies.
+
+        An existing value is left as it is. An ambiguous or invalid reading is skipped,
+        so the detail stays with the office.
+        """
+        case = await self._locked_case(case_id)
+        if case is None or case.status == CaseStatus.SIGNED:
+            await self.session.rollback()
+            return
+        document = next((item for item in case.documents if item.id == document_id), None)
+        if document is None or document.status != DocumentStatus.CLASSIFIED or not document.document_type:
+            await self.session.rollback()
+            return
+        required, optional = _document_specs(case.process_definition)
+        type_spec = next(
+            (item for item in required + optional if item.type_key == document.document_type),
+            None,
+        )
+        reading = type_spec.reading if type_spec is not None else None
+        fields = _field_specs(case.process_definition)
+        current, sources = retract_document(
+            {str(key): str(value) for key, value in (case.field_values or {}).items()},
+            {str(key): dict(value) for key, value in (case.field_sources or {}).items() if isinstance(value, dict)},
+            str(document.id),
+        )
+        report: dict = {
+            "enabled": bool(reading and reading.enabled),
+            "accepted": [],
+            "skips": [],
+            "conflicts": [],
+            "blocked": None,
+        }
+        filled: list[str] = []
+        if reading is not None and reading.enabled:
+            case_ids = {
+                current[spec.key].strip()
+                for spec in fields
+                if spec.field_type == "id_number" and current.get(spec.key, "").strip()
+            }
+            outcome = read_document(reading, document.extracted_text or "", fields, case_ids)
+            writes, skips, conflicts = apply_proposals(current, outcome.proposals)
+            for key, value in writes.items():
+                current[key] = value
+                sources[key] = {"source": "document", "document_id": str(document.id)}
+                filled.append(key)
+            accepted = {
+                item.slot_key: item
+                for item in outcome.proposals
+                if item.value and item.slot_key in writes
+            }
+            report = {
+                "enabled": True,
+                "accepted": [
+                    {"slot_key": key, "rule": accepted[key].rule, "label": accepted[key].label}
+                    for key in filled
+                    if key in accepted
+                ],
+                "skips": [
+                    {
+                        "slot_key": item.slot_key,
+                        "reason": item.reason,
+                        "rule": item.rule,
+                        "label": item.label,
+                    }
+                    for item in skips
+                    if item.reason
+                ],
+                "conflicts": [{"slot_key": key, "value": value} for key, value in conflicts],
+                "blocked": outcome.blocked,
+            }
+        case.field_values = current
+        case.field_sources = sources
+        document.reading_report = report
+        self._mark_data_completion(case)
+        case.updated_at = utcnow()
+        document.updated_at = utcnow()
+        if filled:
+            self.session.add(
+                AuditLog(
+                    case_id=case.id,
+                    document_id=document.id,
+                    action=AuditAction.FIELD_PREFILLED,
+                    actor="system",
+                    new_value={"fields": filled, "reader": document.document_type},
+                )
+            )
+        await self.session.commit()
 
     async def chat(self, case_id: uuid.UUID, payload: ChatRequest) -> CaseWorkspace:
         await self.chat_begin(case_id, payload)
@@ -619,24 +922,34 @@ class CaseService:
         if blockers:
             raise ConflictError(" ".join(blockers))
 
+        form = _sign_form(case)
+        if form is not None:
+            missing = _unanchored_labels(fields, form, merged)
+            if missing:
+                raise ConflictError(
+                    "These details have no place on the form: " + ", ".join(missing) + "."
+                )
+
         signature = decode_signature_png(payload.signature_png_base64)
         layout = case.process_definition.layout or {}
-        rect = layout.get("signature_rect")
-        if not isinstance(rect, list) or len(rect) != 4:
-            raise ConflictError("This process has no signature box configured.")
-        template = self.container.settings.resolved_template_dir / case.process_definition.template_filename
-        if not template.is_file():
-            raise ConflictError("The form template is missing.")
-
         pdf_values: dict[str, str] = {}
         rtl_fields: set[str] = set()
-        for spec in fields:
-            value = merged.get(spec.key, "").strip()
-            if not value:
-                continue
-            pdf_values[spec.pdf_field_name] = value
-            if spec.rtl or contains_hebrew(value):
-                rtl_fields.add(spec.pdf_field_name)
+        template = None
+        rect = None
+        if form is None:
+            rect = layout.get("signature_rect")
+            if not isinstance(rect, list) or len(rect) != 4:
+                raise ConflictError("This process has no signature box configured.")
+            template = self.container.settings.resolved_template_dir / case.process_definition.template_filename
+            if not template.is_file():
+                raise ConflictError("The form template is missing.")
+            for spec in fields:
+                value = merged.get(spec.key, "").strip()
+                if not value:
+                    continue
+                pdf_values[spec.pdf_field_name] = value
+                if spec.rtl or contains_hebrew(value):
+                    rtl_fields.add(spec.pdf_field_name)
 
         packet_key, form_key = signed_keys(case.organization_id, case.id)
         _record_sources(
@@ -671,19 +984,43 @@ class CaseService:
         created_keys: list[str] = []
         commit_started = False
         try:
+            audit_fields: list[str]
+            form_document_id: str | None = None
             with tempfile.TemporaryDirectory() as work:
                 output = Path(work) / "signed.pdf"
-                artifact = self.container.pdf_filler.fill_and_sign(
-                    template_path=template,
-                    output_path=output,
-                    values=pdf_values,
-                    signature_png=signature,
-                    signature_rect=[float(item) for item in rect],
-                    page_index=int(layout.get("page_index", 0)),
-                    rtl_fields=rtl_fields,
-                    certificate=certificate,
-                    signed_at=signed_at,
-                )
+                if form is None:
+                    artifact = self.container.pdf_filler.fill_and_sign(
+                        template_path=template,
+                        output_path=output,
+                        values=pdf_values,
+                        signature_png=signature,
+                        signature_rect=[float(item) for item in rect],
+                        page_index=int(layout.get("page_index", 0)),
+                        rtl_fields=rtl_fields,
+                        certificate=certificate,
+                        signed_at=signed_at,
+                    )
+                    audit_fields = sorted(pdf_values)
+                else:
+                    values, rtl_names = _fill_inputs(case, form)
+                    async with self.container.store.local_copy(form.storage_path) as source:
+                        from app.services.flat_form import sign_flat_form
+
+                        artifact = await asyncio.to_thread(
+                            sign_flat_form,
+                            self.container.pdf_filler,
+                            source_path=source,
+                            output_path=output,
+                            anchors=form.form_anchors or [],
+                            values=values,
+                            rtl_names=rtl_names,
+                            signature_png=signature,
+                            signature_labels=[str(item) for item in layout["signature_labels"]],
+                            certificate=certificate,
+                            signed_at=signed_at,
+                        )
+                    audit_fields = sorted(values)
+                    form_document_id = str(form.id)
                 created_keys.append(form_key)
                 with artifact.content_path.open("rb") as handle:
                     await self.container.store.upload_file(form_key, handle, "application/pdf")
@@ -725,7 +1062,7 @@ class CaseService:
             extra = await after_sign(artifact) if after_sign is not None else None
             recorded = {
                 "output_path": case.output_path,
-                "fields": sorted(pdf_values),
+                "fields": audit_fields,
                 "content_sha256": artifact.content_sha256,
                 "file_sha256": artifact.file_sha256,
                 "signer_verification_id": artifact.signer_verification_id,
@@ -734,6 +1071,8 @@ class CaseService:
                 "channel": context.channel,
                 "case_reference": case.case_reference,
             }
+            if form_document_id is not None:
+                recorded["form_document_id"] = form_document_id
             if extra:
                 recorded.update(extra)
             self.session.add(
@@ -810,6 +1149,148 @@ class CaseService:
             raise NotFoundError("The document file is missing.") from exc
         return reader, document.mime_type, document.original_filename
 
+    async def set_document_role(
+        self,
+        case_id: uuid.UUID,
+        document_id: uuid.UUID,
+        payload: DocumentRoleUpdate,
+    ) -> DocumentRoleRead:
+        case = await self._get_case(case_id)
+        if case.status == CaseStatus.SIGNED:
+            raise ConflictError("This case is already signed.")
+        document = next((item for item in case.documents if item.id == document_id), None)
+        if document is None:
+            raise NotFoundError("Document not found on this case.")
+        if payload.role == "form" and document.mime_type.startswith("image/"):
+            raise ConflictError(
+                "A picture of a form has no text to place details on. Upload the form as a PDF."
+            )
+        if payload.role == "form" and (document.mime_type != "application/pdf" or not document.form_anchors):
+            raise ConflictError("Only a PDF with form fields can be marked as a form.")
+        previous = {"role": document.role, "display_title": document.display_title}
+        changed = document.role != payload.role
+        if changed:
+            self._retract(case, [document])
+        document.role = payload.role
+        if payload.display_title is not None:
+            document.display_title = payload.display_title
+        document.updated_at = utcnow()
+        case.updated_at = utcnow()
+        self.session.add(
+            AuditLog(
+                case_id=case.id,
+                document_id=document.id,
+                action=AuditAction.DOCUMENT_ROLE_CHANGED,
+                actor=self.scope.actor,
+                previous_value=previous,
+                new_value={"role": document.role, "display_title": document.display_title},
+            )
+        )
+        await self.session.commit()
+        result = DocumentRoleRead(
+            document_id=document.id,
+            role=document.role,  # type: ignore[arg-type]
+            display_title=document.display_title,
+        )
+        if changed:
+            await self._reread(case_id)
+        return result
+
+    async def filled_preview(self, case_id: uuid.UUID, document_id: uuid.UUID) -> bytes:
+        case = await self._get_case(case_id)
+        document = next((item for item in case.documents if item.id == document_id), None)
+        if document is None:
+            raise NotFoundError("Document not found on this case.")
+        if document.role != "form":
+            raise ConflictError("This document is not a form.")
+        filled = await self._fill_original(case, document)
+        return await asyncio.to_thread(self.container.pdf_filler.stamp_draft, filled.pdf_bytes)
+
+    async def fill_report(self, case_id: uuid.UUID, document_id: uuid.UUID) -> FillReport:
+        case = await self._get_case(case_id)
+        document = next((item for item in case.documents if item.id == document_id), None)
+        if document is None:
+            raise NotFoundError("Document not found on this case.")
+        filled = await self._fill_original(case, document)
+        stored = {str(key): str(value) for key, value in (case.field_values or {}).items()}
+        sources = _field_sources(case)
+        pending: dict[tuple[str, int], list[str]] = {}
+        for item in filled.fields:
+            pending.setdefault((item.field_name, item.page), []).append(item.status)
+        rows: list[FillReportField] = []
+        for anchor in _bound_anchors(document):
+            name = str(anchor.get("field_name") or "")
+            page = int(anchor.get("page") or 0)
+            key = str(anchor.get("slot_key"))
+            source = sources.get(key)
+            if not stored.get(key, "").strip():
+                status = "awaiting_value"
+            else:
+                queue = pending.get((name, page), [])
+                status = queue.pop(0) if queue else "mismatch"
+            rows.append(
+                FillReportField(
+                    field_name=name,
+                    page=page,
+                    slot_key=key,
+                    status=status,  # type: ignore[arg-type]
+                    source=source.source if source is not None else None,
+                )
+            )
+        return FillReport(document_id=document.id, fields=rows)
+
+    async def intake(self, case_id: uuid.UUID) -> IntakeSummary:
+        case = await self._get_case(case_id)
+        fields = _field_specs(case.process_definition)
+        values = {str(key): str(value) for key, value in (case.field_values or {}).items()}
+        forms: list[IntakeForm] = []
+        documents = sorted(case.documents, key=lambda item: (item.created_at, str(item.id)))
+        for document in documents:
+            anchors = [anchor for anchor in (document.form_anchors or []) if isinstance(anchor, dict)]
+            if document.mime_type != "application/pdf" or not anchors:
+                continue
+            bound = [anchor for anchor in anchors if anchor.get("slot_key")]
+            role = document.role if document.role in {"evidence", "form"} else "evidence"
+            forms.append(
+                IntakeForm(
+                    document_id=document.id,
+                    filename=document.original_filename,
+                    role=role,  # type: ignore[arg-type]
+                    display_title=document.display_title,
+                    widgets_total=len(anchors),
+                    bound=len(bound),
+                    bound_empty=sum(1 for anchor in bound if anchor.get("empty")),
+                    unbound=len(anchors) - len(bound),
+                )
+            )
+        return IntakeSummary(
+            forms=forms,
+            missing_documents=self._gap(case).missing,
+            open_slots=_open_slots(case, fields, values),
+            prompt_he=INTAKE_PROMPT_HE,
+            prompt_en=INTAKE_PROMPT_EN,
+        )
+
+    async def _fill_original(self, case: Case, document: Document) -> FilledForm:
+        values, rtl_names = _fill_inputs(case, document)
+        try:
+            async with self.container.store.local_copy(document.storage_path) as path:
+                filled = await asyncio.to_thread(
+                    self.container.pdf_filler.fill_case_form,
+                    source_path=path,
+                    values=values,
+                    rtl_names=rtl_names,
+                )
+            flat = await asyncio.to_thread(
+                self.container.pdf_filler.fill_flat,
+                filled.pdf_bytes,
+                document.form_anchors or [],
+                values,
+            )
+            return FilledForm(pdf_bytes=flat.pdf_bytes, fields=[*filled.fields, *flat.fields])
+        except ObjectMissingError as exc:
+            raise NotFoundError("The document file is missing.") from exc
+
     async def _get_case(self, case_id: uuid.UUID) -> Case:
         stmt = (
             case_query(self.scope)
@@ -850,6 +1331,7 @@ class CaseService:
             ready_to_sign=not blockers and case.status != CaseStatus.SIGNED,
             signing_blockers=blockers,
             consent_text=OFFICE_CONSENT_TEXT,
+            readings=_reading_reports(case),
         )
 
     def _gap(self, case: Case) -> GapReport:
@@ -868,6 +1350,7 @@ class CaseService:
                 error_message=document.error_message,
             )
             for document in case.documents
+            if not _is_signed_form(case, document)
         ]
         report = self.container.gap_analyzer.analyze(
             case_id=case.id,
@@ -1013,6 +1496,27 @@ class CaseService:
         )
 
 
+def _reading_reports(case: Case) -> list[DocumentReadingReport]:
+    reports: list[DocumentReadingReport] = []
+    for document in sorted(case.documents, key=lambda item: (item.created_at, str(item.id))):
+        raw = document.reading_report
+        if not isinstance(raw, dict):
+            continue
+        reports.append(
+            DocumentReadingReport(
+                document_id=document.id,
+                filename=document.original_filename,
+                document_type=document.document_type,
+                enabled=bool(raw.get("enabled")),
+                accepted=[SlotHit.model_validate(item) for item in raw.get("accepted") or []],
+                skips=[SlotSkip.model_validate(item) for item in raw.get("skips") or []],
+                conflicts=[SlotConflict.model_validate(item) for item in raw.get("conflicts") or []],
+                blocked=raw.get("blocked"),
+            )
+        )
+    return reports
+
+
 def _document_specs(process: ProcessDefinition) -> tuple[list[DocumentTypeSpec], list[DocumentTypeSpec]]:
     required = _DOCUMENT_ADAPTER.validate_python(process.required_documents or [])
     optional = _DOCUMENT_ADAPTER.validate_python(process.optional_documents or [])
@@ -1066,6 +1570,139 @@ def _field_sources(case: Case) -> dict[str, FieldSource]:
     return sources
 
 
+def _sign_form(case: Case) -> Document | None:
+    """The one uploaded form this process signs, or None when it signs a template."""
+    layout = case.process_definition.layout or {}
+    if layout.get("sign_source") != "uploaded_form":
+        return None
+    forms = [
+        document
+        for document in case.documents
+        if document.role == "form" and document.status != DocumentStatus.FAILED
+    ]
+    if len(forms) != 1:
+        raise ConflictError("Mark exactly one uploaded form before signing.")
+    return forms[0]
+
+
+_STALLED_AFTER_SECONDS = 120
+
+
+def _drawer_type(case: Case, document_type: str | None) -> str | None:
+    """The document type named with an upload, checked against this process."""
+    chosen = (document_type or "").strip()
+    if not chosen:
+        return None
+    required, optional = _document_specs(case.process_definition)
+    if chosen not in {item.type_key for item in required + optional}:
+        raise BadRequestError("That document type is not part of this process.")
+    return chosen
+
+
+def _drawer_role(role: str | None) -> str | None:
+    chosen = (role or "").strip()
+    if not chosen:
+        return None
+    if chosen not in {"evidence", "form"}:
+        raise BadRequestError("A file is either evidence or a form.")
+    return chosen
+
+
+def _is_stalled(document: Document) -> bool:
+    touched = document.updated_at or document.created_at
+    if touched is None:
+        return True
+    if touched.tzinfo is None:
+        touched = touched.replace(tzinfo=utcnow().tzinfo)
+    return (utcnow() - touched).total_seconds() > _STALLED_AFTER_SECONDS
+
+
+def _drawer_occupants(
+    case: Case,
+    chosen_type: str | None,
+    chosen_role: str | None,
+    keep: set[uuid.UUID],
+) -> list[Document]:
+    """The saved files already filed where the new upload is going."""
+    found: list[Document] = []
+    for document in case.documents:
+        if document.id is None or document.id in keep:
+            continue
+        in_drawer = (
+            chosen_type is not None
+            and document.document_type == chosen_type
+            and (
+                document.status == DocumentStatus.CLASSIFIED
+                or document.classification_source == ClassificationSource.HUMAN
+            )
+        )
+        is_form = chosen_role == "form" and document.role == "form"
+        if in_drawer or is_form:
+            found.append(document)
+    return found
+
+
+def _has_stalled_documents(case: Case) -> bool:
+    """Files left unread by a job that never finished, so the next upload picks them up."""
+    now = utcnow()
+    for document in case.documents:
+        if document.status not in {DocumentStatus.UPLOADED, DocumentStatus.PROCESSING}:
+            continue
+        touched = as_utc(document.updated_at) or as_utc(document.created_at)
+        if touched is None or (now - touched).total_seconds() > _STALLED_AFTER_SECONDS:
+            return True
+    return False
+
+
+def _is_signed_form(case: Case, document: Document) -> bool:
+    """The form a process signs is not evidence: once read, it needs no document type."""
+    layout = case.process_definition.layout or {}
+    return (
+        layout.get("sign_source") == "uploaded_form"
+        and document.role == "form"
+        and document.status in {DocumentStatus.CLASSIFIED, DocumentStatus.NEEDS_REVIEW}
+    )
+
+
+def _unanchored_labels(fields: list[FieldSpec], form: Document, values: dict[str, str]) -> list[str]:
+    """Required slots that have a value but no drawn place on the uploaded form."""
+    bound = {str(anchor.get("slot_key")) for anchor in _bound_anchors(form)}
+    return [
+        spec.label_he or spec.label
+        for spec in fields
+        if spec.required and values.get(spec.key, "").strip() and spec.key not in bound
+    ]
+
+
+def _bound_anchors(document: Document) -> list[dict]:
+    return [
+        anchor
+        for anchor in (document.form_anchors or [])
+        if isinstance(anchor, dict) and anchor.get("slot_key")
+    ]
+
+
+def _fill_inputs(case: Case, document: Document) -> tuple[dict[str, str], set[str]]:
+    """Map each bound widget that already has a slot value to the text that fills it."""
+    specs = {spec.key: spec for spec in _field_specs(case.process_definition)}
+    stored = {str(key): str(value) for key, value in (case.field_values or {}).items()}
+    values: dict[str, str] = {}
+    rtl_names: set[str] = set()
+    for anchor in _bound_anchors(document):
+        key = str(anchor.get("slot_key"))
+        raw = stored.get(key, "").strip()
+        if not raw:
+            continue
+        name = str(anchor.get("field_name") or "")
+        if not name:
+            continue
+        values[name] = raw
+        spec = specs.get(key)
+        if (spec is not None and spec.rtl) or contains_hebrew(raw):
+            rtl_names.add(name)
+    return values, rtl_names
+
+
 def _anchor_documents(case: Case) -> list[tuple[Document, dict]]:
     pairs: list[tuple[Document, dict]] = []
     for document in sorted(case.documents, key=lambda item: item.created_at):
@@ -1094,7 +1731,15 @@ def _open_slots(case: Case, fields: list[FieldSpec], values: dict[str, str]) -> 
             for document, anchor in pairs
             if anchor.get("slot_key") == spec.key and anchor.get("empty") and anchor.get("match")
         ]
-        slots.append(OpenSlot(key=spec.key, label=spec.label, label_he=spec.label_he, anchors=anchors))
+        slots.append(
+            OpenSlot(
+                key=spec.key,
+                label=spec.label,
+                label_he=spec.label_he,
+                anchors=anchors,
+                why=why_items(case, spec),
+            )
+        )
     return slots
 
 

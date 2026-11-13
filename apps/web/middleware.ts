@@ -12,5 +12,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/cases/:path*"],
+  matcher: ["/", "/office", "/cases/:path*"],
 };

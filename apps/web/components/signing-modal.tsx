@@ -24,10 +24,8 @@ export function SigningModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogTitle className="pe-12">Sign the packet</DialogTitle>
-        <p className="mt-2 text-sm text-mist">
-          Draw the signature. It is stamped onto the signature box of the filled form.
-        </p>
+        <DialogTitle className="pe-12">חתימה דיגיטלית</DialogTitle>
+        <p className="mt-2 text-sm text-ink">חתמו באצבע או בעכבר. החתימה מוטבעת בתיבת החתימה של הטופס הממולא.</p>
         <div className="mt-4">
           <SignatureForm busy={busy} consentLabel={consentLabel} notice={notice} onSign={onSign} />
         </div>
@@ -77,17 +75,17 @@ export function SignatureForm({
         }}
       />
       <Button type="button" variant="outline" className="mt-3 min-h-11 w-full" onClick={showPreview} disabled={busy}>
-        Preview signature
+        תצוגה מקדימה של החתימה
       </Button>
       {preview ? (
         <figure className="mt-4 min-w-0">
           <img
             src={preview}
-            alt="Signature preview"
+            alt="תצוגה מקדימה של החתימה"
             className="h-auto max-w-full rounded-md border border-line bg-white"
             style={previewWidth > 0 ? { width: previewWidth } : undefined}
           />
-          <figcaption className="mt-2 text-xs leading-5 text-mist">This is the signature that will be stamped.</figcaption>
+          <figcaption className="mt-2 text-xs leading-5 text-ink">זו החתימה שתוטבע על הטופס.</figcaption>
         </figure>
       ) : null}
       {consentLabel ? (
@@ -118,7 +116,7 @@ export function SignatureForm({
             });
           }}
         >
-          {busy || submitting ? "Stamping…" : "Stamp and finish"}
+          {busy || submitting ? "חותמים…" : "אישור וחתימה"}
         </Button>
       </div>
     </div>

@@ -32,3 +32,5 @@ class AuditAction(str, Enum):
     SIGNING_LINK_CREATED = "signing_link_created"
     SIGNING_LINK_REVOKED = "signing_link_revoked"
     FIELD_PREFILLED = "field_prefilled"
+    DOCUMENT_ROLE_CHANGED = "document_role_changed"
+    DOCUMENT_REMOVED = "document_removed"

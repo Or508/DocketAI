@@ -32,6 +32,13 @@ def test_field_formats() -> None:
     assert validate_field(_spec("date"), "2026-13-40").ok is False
 
 
+def test_one_character_is_enough_only_for_an_optional_text_field() -> None:
+    optional = FieldSpec(key="house", label="House", field_type="text", pdf_field_name="house", required=False)
+    kept = validate_field(optional, "5")
+    assert kept.ok and kept.normalized == "5"
+    assert validate_field(_spec("text"), "5").ok is False
+
+
 def test_missing_required_fields_ignores_optional() -> None:
     specs = [
         FieldSpec(key="full_name", label="Full legal name", field_type="text", pdf_field_name="full_name"),

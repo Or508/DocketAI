@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -25,7 +26,8 @@ from app.schemas.portal import (
     SigningLinkCreated,
     SigningLinkRead,
 )
-from app.services.case_service import CaseService, _field_specs
+from app.services.case_service import CaseService, _field_specs, _fill_inputs, _sign_form
+from app.services.object_store import ObjectMissingError
 from app.services.chat_collector import ask
 from app.services.field_validator import missing_required_fields
 
@@ -158,7 +160,7 @@ class PortalService:
             missing_fields=missing,
             ready_to_sign=state == "open" and not blockers,
             waiting_on_office=any(not item.startswith("Still need:") for item in blockers),
-            review_digest=review_digest(values, case.process_definition.template_filename),
+            review_digest=review_digest(values, self._review_token(case)),
             expires_at=expires_at,
             signed_at=signed_at,
             download_expires_at=as_utc(link.download_expires_at) if state == "completed" else None,
@@ -175,7 +177,7 @@ class PortalService:
     ) -> None:
         self.require_open(link, case)
         values = {str(key): str(value) for key, value in (case.field_values or {}).items()}
-        digest = review_digest(values, case.process_definition.template_filename)
+        digest = review_digest(values, self._review_token(case))
         if digest != payload.review_digest:
             raise ConflictError("The form changed. Please review it again.")
         hours = self.container.settings.signing_link_download_hours
@@ -226,7 +228,31 @@ class PortalService:
         if link_state(link, case, utcnow()) != "open":
             raise ConflictError("This form is already signed.")
 
+    def _review_token(self, case: Case) -> str:
+        """Uploaded forms are reviewed by their file hash. Templates stay on the filename."""
+        form = _sign_form(case)
+        if form is None:
+            return case.process_definition.template_filename
+        return form.content_hash
+
     async def preview_pdf(self, case: Case) -> bytes:
+        form = _sign_form(case)
+        if form is not None:
+            from app.services.flat_form import preview_flat_form
+
+            values, rtl_names = _fill_inputs(case, form)
+            try:
+                async with self.container.store.local_copy(form.storage_path) as path:
+                    return await asyncio.to_thread(
+                        preview_flat_form,
+                        self.container.pdf_filler,
+                        source_path=path,
+                        anchors=form.form_anchors or [],
+                        values=values,
+                        rtl_names=rtl_names,
+                    )
+            except ObjectMissingError as exc:
+                raise NotFoundError("The document file is missing.") from exc
         fields = _field_specs(case.process_definition)
         values = {str(key): str(value) for key, value in (case.field_values or {}).items()}
         pdf_values: dict[str, str] = {}

@@ -47,7 +47,8 @@ def validate_field(spec: FieldSpec, raw: str) -> FieldValidation:
         if normalized is None:
             return FieldValidation(False, message=f"{spec.label} is not a valid 9-digit national ID.")
         return FieldValidation(True, normalized)
-    if len(text) < 2:
+    # An optional detail such as a house number may be a single character.
+    if len(text) < (2 if spec.required else 1):
         return FieldValidation(False, message=f"{spec.label} is too short.")
     if len(text) > 200:
         return FieldValidation(False, message=f"{spec.label} is too long.")

@@ -5,9 +5,8 @@ import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const FAILURE = "Email or password is incorrect.";
+const FAILURE = "הדוא״ל או הסיסמה שגויים.";
 
-// Parse the way the browser will: it strips tabs and newlines, so "/<tab>/host" is really "//host".
 function safeNext(value: string | null): string {
   if (!value) return "/";
   try {
@@ -35,7 +34,7 @@ export function LoginForm({ nextPath }: { nextPath: string | null }) {
         body: JSON.stringify({ email, password }),
       });
       if (!response.ok) {
-        setError(FAILURE);
+        setError(response.status === 502 ? "לא ניתן להגיע לשירות המשרד." : FAILURE);
         setBusy(false);
         return;
       }
@@ -48,15 +47,15 @@ export function LoginForm({ nextPath }: { nextPath: string | null }) {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5">
-      <form onSubmit={onSubmit} className="rounded-lg border border-line bg-white/75 p-6 shadow-card">
-        <p className="text-[11px] uppercase tracking-[0.18em] text-tide">DocketAI</p>
-        <h1 className="mt-2 font-serif text-3xl">Sign in</h1>
-        <label className="mt-5 block text-xs uppercase tracking-[0.16em] text-mist" htmlFor="email">
-          Email
+      <form onSubmit={onSubmit} className="rounded-lg border-2 border-ink/15 bg-white p-6 shadow-card">
+        <p className="text-sm font-semibold text-tide">ארון תיוק ובקרת מסמכים</p>
+        <h1 className="mt-2 font-serif text-3xl">כניסת משרד</h1>
+        <label className="mt-5 block text-sm font-semibold" htmlFor="email">
+          דוא״ל
         </label>
-        <Input id="email" type="email" className="mt-2" value={email} onChange={(event) => setEmail(event.target.value)} required />
-        <label className="mt-4 block text-xs uppercase tracking-[0.16em] text-mist" htmlFor="password">
-          Password
+        <Input id="email" type="email" className="mt-2" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="username" />
+        <label className="mt-4 block text-sm font-semibold" htmlFor="password">
+          סיסמה
         </label>
         <Input
           id="password"
@@ -65,10 +64,15 @@ export function LoginForm({ nextPath }: { nextPath: string | null }) {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           required
+          autoComplete="current-password"
         />
-        {error ? <p className="mt-4 text-sm text-clay">{error}</p> : null}
+        {error ? (
+          <p className="mt-4 text-sm font-medium text-clay" role="alert">
+            {error}
+          </p>
+        ) : null}
         <Button type="submit" className="mt-6 w-full" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? "נכנסים…" : "כניסה"}
         </Button>
       </form>
     </main>

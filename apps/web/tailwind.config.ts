@@ -5,14 +5,14 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        paper: "#f3efe6",
-        ink: "#1c1915",
-        line: "#e4dccb",
-        tide: "#0f4c4a",
-        clay: "#8f3d2a",
-        moss: "#1f6b45",
-        amberink: "#8a5a12",
-        mist: "#6d665c",
+        paper: "#f4f0e6",
+        ink: "#16130f",
+        line: "#cfc4ae",
+        tide: "#0b3a38",
+        clay: "#7a2e1e",
+        moss: "#145c38",
+        amberink: "#6e470c",
+        mist: "#3c362e",
       },
       fontFamily: {
         serif: ['"Iowan Old Style"', "Palatino Linotype", "Palatino", "Georgia", "serif"],

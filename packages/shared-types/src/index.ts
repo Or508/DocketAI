@@ -17,12 +17,40 @@ export type ClassificationSource = "pending" | "auto" | "human";
 
 export type FieldType = "text" | "email" | "phone" | "date" | "id_number";
 
+export interface ReadingPart {
+  labels: string[];
+}
+
+export interface ReadingRule {
+  kind: "labeled" | "unique" | "composite";
+  slot_key: string;
+  labels: string[];
+  parts: ReadingPart[];
+  piece: "street" | "house_number" | "city" | null;
+}
+
+export interface DocumentReading {
+  enabled: boolean;
+  one_person: boolean;
+  rules: ReadingRule[];
+}
+
 export interface DocumentTypeSpec {
   type_key: string;
   label: string;
   label_he: string | null;
   description: string;
   min_count: number;
+  reading: DocumentReading | null;
+}
+
+export interface Provenance {
+  form_he: string | null;
+  section_he: string | null;
+  purpose_he: string | null;
+  form_en: string | null;
+  section_en: string | null;
+  purpose_en: string | null;
 }
 
 export interface FieldSpec {
@@ -33,6 +61,7 @@ export interface FieldSpec {
   pdf_field_name: string;
   required: boolean;
   rtl: boolean;
+  provenance: Provenance | null;
 }
 
 export type ValueSource = "client" | "document" | "office";
@@ -156,11 +185,108 @@ export interface FormAnchorRef {
   match: "exact" | "synonym";
 }
 
+export interface WhyItem {
+  kind: "template" | "form";
+  text_he: string;
+  text_en: string;
+  document_id: string | null;
+  page: number | null;
+}
+
 export interface OpenSlot {
   key: string;
   label: string;
   label_he: string | null;
   anchors: FormAnchorRef[];
+  why: WhyItem[];
+}
+
+export interface DocumentRoleUpdate {
+  role: "evidence" | "form";
+  display_title: string | null;
+}
+
+export interface DocumentRoleRead {
+  document_id: string;
+  role: "evidence" | "form";
+  display_title: string | null;
+}
+
+export type FillStatus =
+  | "ok"
+  | "overflow"
+  | "mismatch"
+  | "skipped_prefilled"
+  | "comb_unsupported"
+  | "awaiting_value";
+
+export interface FillReportField {
+  field_name: string;
+  page: number;
+  slot_key: string;
+  status: FillStatus;
+  source: ValueSource | null;
+}
+
+export interface FillReport {
+  document_id: string;
+  fields: FillReportField[];
+}
+
+export interface IntakeForm {
+  document_id: string;
+  filename: string;
+  role: "evidence" | "form";
+  display_title: string | null;
+  widgets_total: number;
+  bound: number;
+  bound_empty: number;
+  unbound: number;
+}
+
+export interface IntakeSummary {
+  forms: IntakeForm[];
+  missing_documents: MissingRequirement[];
+  open_slots: OpenSlot[];
+  prompt_he: string;
+  prompt_en: string;
+}
+
+export type SkipReason =
+  | "no_text_layer"
+  | "label_not_found"
+  | "ambiguous_match"
+  | "validator_rejected"
+  | "id_mismatch"
+  | "already_filled";
+
+export interface SlotHit {
+  slot_key: string;
+  rule: "labeled" | "unique" | "composite";
+  label: string | null;
+}
+
+export interface SlotSkip {
+  slot_key: string;
+  reason: SkipReason;
+  rule: "labeled" | "unique" | "composite";
+  label: string | null;
+}
+
+export interface SlotConflict {
+  slot_key: string;
+  value: string;
+}
+
+export interface DocumentReadingReport {
+  document_id: string;
+  filename: string;
+  document_type: string | null;
+  enabled: boolean;
+  accepted: SlotHit[];
+  skips: SlotSkip[];
+  conflicts: SlotConflict[];
+  blocked: "id_mismatch" | null;
 }
 
 export interface UnboundAnchor {
@@ -258,6 +384,7 @@ export interface CaseWorkspace {
   ready_to_sign: boolean;
   signing_blockers: string[];
   consent_text: string;
+  readings: DocumentReadingReport[];
 }
 
 export type ChatStreamEvent =

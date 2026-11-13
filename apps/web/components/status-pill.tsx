@@ -1,26 +1,15 @@
-import type { CaseStatus } from "@docketai/shared-types";
-
+import type { FolderTone } from "@/lib/filing";
+import { FOLDER_LABEL } from "@/lib/filing";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-const copy: Record<CaseStatus, string> = {
-  draft: "Draft",
-  processing: "Processing",
-  ready_for_review: "Needs review",
-  filling: "Ready to fill",
-  signed: "Signed",
-  failed: "Failed",
+const tone: Record<FolderTone, string> = {
+  missing: "border-amberink bg-[#f6e4c4] text-[#4a3208]",
+  review: "border-tide bg-[#d5ece9] text-[#062725]",
+  awaiting: "border-[#062725] bg-tide text-white",
+  done: "border-[#0c3d28] bg-moss text-white",
 };
 
-const tone: Record<CaseStatus, string> = {
-  draft: "text-mist",
-  processing: "border-tide/30 text-tide",
-  ready_for_review: "border-amberink/30 text-amberink",
-  filling: "border-tide/30 text-tide",
-  signed: "border-moss/30 text-moss",
-  failed: "border-clay/30 text-clay",
-};
-
-export function StatusPill({ status }: { status: CaseStatus }) {
-  return <Badge className={cn(tone[status])}>{copy[status]}</Badge>;
+export function StatusPill({ tone: folder }: { tone: FolderTone }) {
+  return <Badge className={cn(tone[folder])}>{FOLDER_LABEL[folder]}</Badge>;
 }

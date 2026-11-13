@@ -2,9 +2,9 @@ import Link from "next/link";
 
 export function Wordmark({ href = "/" }: { href?: string }) {
   return (
-    <Link href={href} className="flex items-baseline gap-2">
-      <span className="font-serif text-xl tracking-tight">Docket</span>
-      <span className="text-[11px] uppercase tracking-[0.22em] text-tide">AI</span>
+    <Link href={href} className="flex items-baseline gap-2 rounded-sm">
+      <span className="font-serif text-xl tracking-tight text-ink">ארון תיוק</span>
+      <span className="text-xs font-semibold text-tide">מסמכים</span>
     </Link>
   );
 }

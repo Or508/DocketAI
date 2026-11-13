@@ -22,6 +22,9 @@ _CASE_COLUMNS = {
 
 _DOCUMENT_COLUMNS = {
     "form_anchors": "JSON",
+    "role": "VARCHAR(16) DEFAULT 'evidence' NOT NULL",
+    "display_title": "VARCHAR(120)",
+    "reading_report": "JSON",
 }
 
 

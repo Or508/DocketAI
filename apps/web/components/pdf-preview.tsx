@@ -24,7 +24,7 @@ export function PdfCanvas({ url, refreshKey = "" }: { url: string; refreshKey?: 
         const pdfjs = await import("pdfjs-dist");
         pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
         const response = await fetch(url);
-        if (!response.ok) throw new Error("The preview could not be loaded.");
+        if (!response.ok) throw new Error("לא ניתן לטעון את התצוגה.");
         const data = new Uint8Array(await response.arrayBuffer());
         const pdf = await pdfjs.getDocument({ data }).promise;
         const count = Math.min(pdf.numPages, 3);
@@ -41,7 +41,7 @@ export function PdfCanvas({ url, refreshKey = "" }: { url: string; refreshKey?: 
         }
         await pdf.cleanup();
       } catch {
-        if (!cancelled) setNote("This file could not be previewed.");
+        if (!cancelled) setNote("לא ניתן להציג את הקובץ.");
       }
     })();
     return () => {

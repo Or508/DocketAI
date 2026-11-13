@@ -5,7 +5,7 @@ import SignatureCanvas from "react-signature-canvas";
 
 import { Button } from "@/components/ui/button";
 
-const TOO_SMALL = "Please sign with your full signature.";
+const TOO_SMALL = "נא לחתום חתימה מלאה.";
 
 type Strokes = ReturnType<SignatureCanvas["toData"]>;
 
@@ -73,10 +73,10 @@ export const SignaturePad = forwardRef<SignaturePadHandle, { onChange?: () => vo
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button type="button" variant="outline" className="min-h-11 min-w-11" onClick={undo}>
-          Undo
+          ביטול קו
         </Button>
         <Button type="button" variant="ghost" className="min-h-11 min-w-11" onClick={clear}>
-          Clear
+          ניקוי
         </Button>
       </div>
     </div>

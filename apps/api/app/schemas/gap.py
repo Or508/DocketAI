@@ -76,6 +76,16 @@ class FormAnchorRef(BaseModel):
     match: Literal["exact", "synonym"]
 
 
+class WhyItem(BaseModel):
+    """One deterministic reason a slot is asked. document_id and page are office-only."""
+
+    kind: Literal["template", "form"]
+    text_he: str
+    text_en: str
+    document_id: UUID | None = None
+    page: int | None = None
+
+
 class OpenSlot(BaseModel):
     """A required field with no value yet, and any empty widgets bound to it."""
 
@@ -83,6 +93,7 @@ class OpenSlot(BaseModel):
     label: str
     label_he: str | None = None
     anchors: list[FormAnchorRef] = Field(default_factory=list)
+    why: list[WhyItem] = Field(default_factory=list)
 
 
 class UnboundAnchor(BaseModel):

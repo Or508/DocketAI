@@ -1,14 +1,14 @@
 import type { PipelineProgress } from "@docketai/shared-types";
 
 const labels: Record<PipelineProgress["stage"], string> = {
-  draft: "Draft",
-  parsing: "Parsing",
-  classifying: "Classifying",
-  auditing: "Auditing",
-  awaiting_input: "Awaiting input",
-  ready_for_signature: "Ready for signature",
-  signed: "Signed",
-  failed: "Needs attention",
+  draft: "טיוטה",
+  parsing: "קריאה",
+  classifying: "סיווג",
+  auditing: "בדיקה",
+  awaiting_input: "ממתין למשרד",
+  ready_for_signature: "מוכן לחתימה",
+  signed: "נחתם",
+  failed: "דורש תשומת לב",
 };
 
 export function PipelineBanner({ pipeline }: { pipeline: PipelineProgress }) {

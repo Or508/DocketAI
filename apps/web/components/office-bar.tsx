@@ -32,7 +32,7 @@ export function OfficeBar() {
     <div className="flex items-center gap-3 text-sm">
       {organization ? <p className="text-mist">{organization}</p> : null}
       <Button type="button" variant="outline" onClick={() => void signOut()}>
-        Sign out
+        יציאה
       </Button>
     </div>
   );

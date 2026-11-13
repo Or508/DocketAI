@@ -26,6 +26,8 @@ class TemplateFactory:
     def ensure_templates(self, processes: tuple[ProcessSeed, ...] | list[ProcessSeed]) -> None:
         self._directory.mkdir(parents=True, exist_ok=True)
         for process in processes:
+            if process.layout.get("sign_source") == "uploaded_form":
+                continue
             path = self._directory / process.template_filename
             if path.exists():
                 continue

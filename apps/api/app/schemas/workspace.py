@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.case import CaseRead
 from app.schemas.chat import ChatMessageRead
+from app.schemas.forms import DocumentReadingReport
 from app.schemas.gap import GapReport, OpenSlot, UnboundAnchor
 from app.schemas.process import FieldSource, FieldSpec, ProcessRead
 
@@ -24,6 +25,7 @@ class CaseWorkspace(BaseModel):
     ready_to_sign: bool
     signing_blockers: list[str]
     consent_text: str
+    readings: list[DocumentReadingReport] = Field(default_factory=list)
 
 
 class UploadResult(BaseModel):

@@ -1,23 +1,23 @@
 "use client";
 
-import type { PortalView } from "@docketai/shared-types";
+import type { FieldSpec, PortalView } from "@docketai/shared-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ChatPanel } from "@/components/chat-panel";
-import { FieldVerification } from "@/components/field-verification";
 import { IntegrityPanel } from "@/components/integrity-panel";
 import { PdfCanvas } from "@/components/pdf-preview";
 import { SignatureForm, SigningModal } from "@/components/signing-modal";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
+import { FIELD_LABEL } from "@/lib/filing";
+import { hebrewOfficeError } from "@/lib/hebrew";
 import { portalApi, portalCertificateUrl, portalDownloadUrl, portalPreviewUrl } from "@/lib/portal-api";
 
-const RECORDING =
-  "We record the signing time, your IP address and your browser details on the certificate.";
+const RECORDING = "נרשמים מועד החתימה, כתובת הרשת ופרטי הדפדפן על גבי אישור החתימה.";
+const REVIEW_AGAIN = "המשרד עדכן פרט בטופס בהסכמתך – אנא עבור על הטופס המעודכן לפני החתימה";
 
 type Step = 1 | 2 | 3 | 4;
 
-const STEP_LABELS = ["Check details", "Review", "Sign", "Done"] as const;
+const STEP_LABELS = ["בדיקת פרטים והסברים", "צפייה בטופס המלא", "חתימה דיגיטלית", "אישור והורדה"] as const;
 
 function derivedStep(view: PortalView): Step {
   if (view.state === "completed") return 4;
@@ -25,20 +25,11 @@ function derivedStep(view: PortalView): Step {
   return 1;
 }
 
-function focusField(id: string) {
-  const node = document.getElementById(id);
-  if (!node) return;
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  node.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
-  node.focus();
-}
-
 export function PortalViewScreen({ token }: { token: string }) {
   const [view, setView] = useState<PortalView | null>(null);
   const [inactive, setInactive] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [liveReply, setLiveReply] = useState<string | null>(null);
   const [signing, setSigning] = useState(false);
   const [step, setStep] = useState<Step>(1);
   const synced = useRef(false);
@@ -54,7 +45,7 @@ export function PortalViewScreen({ token }: { token: string }) {
         setView(null);
         return;
       }
-      setNotice(error instanceof Error ? error.message : "The form could not be loaded.");
+      setNotice(hebrewOfficeError(error));
     }
   }, [token]);
 
@@ -88,15 +79,13 @@ export function PortalViewScreen({ token }: { token: string }) {
       setSigning(false);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
-        // The form changed since the signer reviewed it. Send them back to review
-        // the new version; signing straight away would reuse the fresh digest unseen.
-        setNotice(error.message);
+        setNotice(REVIEW_AGAIN);
         setSigning(false);
         setStep(2);
         await load();
         return;
       }
-      setNotice(error instanceof Error ? error.message : "The form could not be signed.");
+      setNotice(hebrewOfficeError(error));
     } finally {
       setBusy(false);
     }
@@ -105,7 +94,7 @@ export function PortalViewScreen({ token }: { token: string }) {
   if (inactive) {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
-        <h1 className="font-serif text-3xl">This link is no longer active</h1>
+        <h1 className="font-serif text-3xl">הקישור הזה כבר לא פעיל</h1>
       </main>
     );
   }
@@ -113,135 +102,89 @@ export function PortalViewScreen({ token }: { token: string }) {
   if (!view) {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
-        <p className="text-sm text-mist">{notice ?? "Loading the form."}</p>
+        <p className="text-sm text-ink">{notice ?? "טוען את הטופס."}</p>
       </main>
     );
   }
 
-  const total = view.process.required_fields.length;
-  const done = total - view.missing_fields.length;
+  const ready = view.ready_to_sign && !view.waiting_on_office;
 
   return (
     <main className="mx-auto flex min-w-0 max-w-3xl flex-col gap-5 overflow-x-clip px-4 py-8">
       <header>
-        <p className="text-[11px] uppercase tracking-[0.18em] text-tide">Signing</p>
-        <h1 className="font-serif text-4xl" dir="auto">
-          {view.process.name}
-        </h1>
-        {view.client_name ? (
-          <p className="mt-2 text-lg" dir="auto">
-            {view.client_name}
-          </p>
-        ) : null}
+        <p className="text-sm font-semibold text-tide">חתימת לקוח</p>
+        <h1 className="font-serif text-4xl">{view.process.name}</h1>
+        {view.client_name ? <p className="mt-2 text-lg">{view.client_name}</p> : null}
       </header>
-      <nav aria-label="Progress" className="grid grid-cols-4 gap-1 text-center text-[11px] leading-4">
+      <nav aria-label="שלבי החתימה" className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
         {STEP_LABELS.map((label, index) => {
           const number = (index + 1) as Step;
           const current = step === number;
           return (
-            <p key={label} className={current ? "font-medium text-tide" : "text-mist"} aria-current={current ? "step" : undefined}>
+            <p
+              key={label}
+              className={`rounded-md border-2 px-2 py-2 text-center font-semibold leading-5 ${current ? "border-tide bg-tide text-white" : "border-ink/15 bg-white text-ink"}`}
+              aria-current={current ? "step" : undefined}
+            >
               {number}. {label}
             </p>
           );
         })}
       </nav>
-      {notice ? <p className="text-sm text-clay">{notice}</p> : null}
+      {notice ? (
+        <p className="rounded-md border-2 border-amberink bg-[#fbf3e4] px-4 py-3 text-sm font-semibold text-[#4a3208]" role="alert">
+          {notice}
+        </p>
+      ) : null}
       {step === 1 ? (
-        <div className="flex flex-col gap-5 pb-28">
-          <FieldVerification
-            process={view.process}
-            field_values={view.field_values}
-            busy={busy}
-            onSave={async (key, value) => {
-              setBusy(true);
-              setNotice(null);
-              try {
-                setView(await portalApi.setField(token, key, value));
-              } catch (error) {
-                setNotice(error instanceof Error ? error.message : "That value could not be saved.");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          />
-          <details className="rounded-lg border border-line bg-[#fbf8f2]">
-            <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm">
-              Prefer to type? Chat with the clerk
-            </summary>
-            <div className="px-2 pb-2">
-              <ChatPanel
-                workspace={view}
-                busy={busy}
-                liveReply={liveReply}
-                onSend={async (message) => {
-                  setBusy(true);
-                  setLiveReply("");
-                  setNotice(null);
-                  try {
-                    setView(await portalApi.streamChat(token, message, setLiveReply));
-                  } catch (error) {
-                    setNotice(error instanceof Error ? error.message : "The message could not be sent.");
-                  } finally {
-                    setBusy(false);
-                    setLiveReply(null);
-                  }
-                }}
-              />
-            </div>
-          </details>
-          {view.waiting_on_office ? (
-            <p className="text-sm leading-6">The office is finishing your documents. Check back soon.</p>
-          ) : null}
-          <div className="sticky bottom-0 z-10 -mx-4 border-t border-line bg-[#f3efe6]/95 px-4 py-3">
-            <p className="mb-2 text-sm text-mist">
-              {done} of {total} done
-            </p>
-            <Button
-              type="button"
-              className="min-h-11 w-full"
-              onClick={() => {
-                const missing = view.missing_fields[0];
-                if (missing) {
-                  focusField(`field-${missing.key}`);
-                  return;
-                }
-                if (view.ready_to_sign) setStep(2);
-              }}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
+        <section className="rounded-lg border-2 border-ink/15 bg-white p-6 shadow-card">
+          <h2 className="font-serif text-3xl">בדיקת פרטים והסברים</h2>
+          <p className="mt-3 text-sm leading-7">
+            אלה הפרטים האישיים שנרשמו בטופס, והמקום בטופס שבו כל פרט נכתב. אין כאן מה להקליד.
+          </p>
+          <ul className="mt-4 space-y-3">
+            {view.process.required_fields.map((field) => (
+              <li key={field.key} className="rounded-md border-2 border-ink/10 px-3 py-3">
+                <p className="font-semibold">{FIELD_LABEL[field.key] ?? field.label_he ?? field.label}</p>
+                <p className="mt-1 text-sm" dir="auto">
+                  {view.field_values[field.key] || "עדיין ריק"}
+                </p>
+                <p className="mt-1 text-sm text-ink">{explain(field)}</p>
+              </li>
+            ))}
+          </ul>
+          <Button type="button" className="mt-6 min-h-11 w-full" disabled={!ready} onClick={() => setStep(2)}>
+            {ready ? "המשך לצפייה בטופס" : "הטופס עוד לא מוכן"}
+          </Button>
+        </section>
       ) : null}
       {step === 2 ? (
-        <section className="min-w-0 rounded-lg border border-line bg-white/80 shadow-card">
-          <div className="border-b border-line px-4 py-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-tide">Draft</p>
-            <h2 className="font-serif text-2xl">Form preview</h2>
+        <section className="min-w-0 rounded-lg border-2 border-ink/15 bg-white shadow-card">
+          <div className="border-b-2 border-ink/10 px-4 py-4">
+            <h2 className="font-serif text-2xl">צפייה בטופס המלא</h2>
           </div>
           <div className="min-w-0 overflow-hidden px-4 py-4">
             <PdfCanvas url={portalPreviewUrl(token)} refreshKey={view.review_digest ?? ""} />
           </div>
           <div className="flex flex-col gap-2 px-4 pb-4">
             <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => setStep(1)}>
-              Back
+              חזרה לפרטים
             </Button>
-            <Button type="button" className="min-h-11 w-full" disabled={!view.ready_to_sign} onClick={() => setStep(3)}>
-              Looks right
+            <Button type="button" className="min-h-11 w-full" disabled={!ready} onClick={() => setStep(3)}>
+              המשך לחתימה
             </Button>
           </div>
         </section>
       ) : null}
       {step === 3 ? (
-        <section className="rounded-lg border border-line bg-white/80 p-4 shadow-card">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-tide">Sign</p>
-          <h2 className="font-serif text-2xl">Sign the form</h2>
+        <section className="rounded-lg border-2 border-ink/15 bg-white p-4 shadow-card">
+          <h2 className="font-serif text-2xl">חתימה דיגיטלית</h2>
           <div className="mt-4 md:hidden">
             <SignatureForm busy={busy} consentLabel={view.consent_text} notice={RECORDING} onSign={sign} />
           </div>
           <div className="mt-4 hidden md:block">
             <Button type="button" className="min-h-11 w-full" onClick={() => setSigning(true)} disabled={busy}>
-              Sign
+              חתימה
             </Button>
             <SigningModal
               open={signing}
@@ -253,7 +196,7 @@ export function PortalViewScreen({ token }: { token: string }) {
             />
           </div>
           <Button type="button" variant="outline" className="mt-4 min-h-11 w-full" onClick={() => setStep(2)}>
-            Back
+            חזרה לטופס
           </Button>
         </section>
       ) : null}
@@ -267,4 +210,10 @@ export function PortalViewScreen({ token }: { token: string }) {
       ) : null}
     </main>
   );
+}
+
+function explain(field: FieldSpec) {
+  const provenance = field.provenance;
+  if (!provenance) return "הפרט נרשם בטופס.";
+  return [provenance.form_he, provenance.section_he, provenance.purpose_he].filter(Boolean).join(" · ") || "הפרט נרשם בטופס.";
 }

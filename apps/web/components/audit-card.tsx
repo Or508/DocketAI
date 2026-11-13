@@ -6,8 +6,8 @@ import { useState } from "react";
 
 import { certificateUrl } from "@/lib/api";
 
-const MISSING = "Not recorded for this packet";
-const BLANK = "Not recorded";
+const MISSING = "לא נרשם לחבילה הזו";
+const BLANK = "לא נרשם";
 
 export function AuditCard({ caseId, audit }: { caseId: string; audit: CaseAudit }) {
   const [copied, setCopied] = useState<string | null>(null);
@@ -30,40 +30,40 @@ export function AuditCard({ caseId, audit }: { caseId: string; audit: CaseAudit 
         dateStyle: "medium",
         timeStyle: "medium",
         timeZone: "Asia/Jerusalem",
-      }).format(new Date(audit.signed_at))} Israel time`
+      }).format(new Date(audit.signed_at))} שעון ישראל`
     : MISSING;
 
   return (
     <section className="rounded-lg border border-line bg-[#fbf8f2] shadow-card">
       <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-4">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-tide">Audit & Integrity</p>
-          <h2 className="font-serif text-2xl">Signature record</h2>
+          <p className="text-sm font-semibold text-tide">אישור שלמות</p>
+          <h2 className="font-serif text-2xl">רשומת החתימה</h2>
         </div>
         <ShieldCheck className="h-5 w-5 text-tide" aria-hidden="true" />
       </div>
       <dl className="space-y-3 px-4 py-4 text-sm">
-        <PlainRow label="Status" value="Signed" />
-        <PlainRow label="Signed at" value={signedAt} />
-        <CopyRow label="Verification reference" value={audit.signer_verification_id} copied={copied} onCopy={copy} />
+        <PlainRow label="מצב" value="נחתם" />
+        <PlainRow label="מועד חתימה" value={signedAt} />
+        <CopyRow label="מזהה אימות" value={audit.signer_verification_id} copied={copied} onCopy={copy} />
         <CopyRow
-          label="File SHA-256"
+          label="SHA-256 של הקובץ"
           value={audit.file_sha256}
-          hint="Matches the downloaded PDF."
+          hint="תואם את קובץ ה־PDF שהורד."
           copied={copied}
           onCopy={copy}
         />
         <CopyRow
-          label="Form content SHA-256"
+          label="SHA-256 של תוכן הטופס"
           value={audit.content_sha256}
-          hint="Printed in the PDF footer. Calculated before the footer was added, so it differs from the file hash."
+          hint="מודפס בתחתית ה־PDF. מחושב לפני הוספת התחתית, ולכן שונה מטביעת הקובץ."
           copied={copied}
           onCopy={copy}
         />
       </dl>
       <CertificateSection caseId={caseId} certificate={audit.certificate} />
       <p className="border-t border-line px-4 py-3 text-xs leading-5 text-mist">
-        This record shows whether the file has changed since signing. It does not verify the signer's identity.
+        הרשומה מראה אם הקובץ השתנה מאז החתימה. היא לא מאמתת את זהות החותם.
       </p>
     </section>
   );
@@ -80,22 +80,22 @@ function israelTime(value: string | null) {
 
 function CertificateSection({ caseId, certificate }: { caseId: string; certificate: CaseCertificate | null }) {
   if (!certificate) {
-    return <p className="border-t border-line px-4 py-3 text-sm">No certificate for this packet</p>;
+    return <p className="border-t border-line px-4 py-3 text-sm">אין אישור לחבילה הזו</p>;
   }
-  const method = certificate.channel === "portal" ? "Secure signing link" : "Office workspace";
+  const method = certificate.channel === "portal" ? "קישור חתימה" : "מסך המשרד";
   return (
     <div className="border-t border-line px-4 py-4">
-      <h3 className="font-serif text-xl">Certificate</h3>
+      <h3 className="font-serif text-xl">אישור</h3>
       <dl className="mt-3 space-y-3 text-sm">
-        <PlainRow label="Case reference" value={certificate.case_reference} />
-        <PlainRow label="Signing method" value={method} />
-        <PlainRow label="IP address" value={certificate.signer_ip ?? BLANK} />
-        <PlainRow label="Browser" value={certificate.signer_user_agent ?? BLANK} />
-        <PlainRow label="Case created" value={israelTime(certificate.created_at)} />
-        <PlainRow label="Data collection completed" value={israelTime(certificate.data_completed_at)} />
-        <PlainRow label="Signing link issued" value={israelTime(certificate.link_issued_at)} />
-        <PlainRow label="Signed" value={israelTime(certificate.signed_at)} />
-        <PlainRow label="Total pages" value={String(certificate.total_pages)} />
+        <PlainRow label="מזהה תיק" value={certificate.case_reference} />
+        <PlainRow label="דרך החתימה" value={method} />
+        <PlainRow label="כתובת רשת" value={certificate.signer_ip ?? BLANK} />
+        <PlainRow label="דפדפן" value={certificate.signer_user_agent ?? BLANK} />
+        <PlainRow label="פתיחת התיק" value={israelTime(certificate.created_at)} />
+        <PlainRow label="השלמת הפרטים" value={israelTime(certificate.data_completed_at)} />
+        <PlainRow label="הנפקת קישור" value={israelTime(certificate.link_issued_at)} />
+        <PlainRow label="חתימה" value={israelTime(certificate.signed_at)} />
+        <PlainRow label="עמודים" value={String(certificate.total_pages)} />
       </dl>
       <a
         className="mt-3 inline-block text-sm text-tide underline"
@@ -103,7 +103,7 @@ function CertificateSection({ caseId, certificate }: { caseId: string; certifica
         target="_blank"
         rel="noreferrer"
       >
-        View certificate
+        צפייה באישור
       </a>
     </div>
   );
@@ -143,7 +143,7 @@ function CopyRow({
           <button
             type="button"
             className="mt-0.5 text-tide"
-            aria-label={`Copy ${label}`}
+            aria-label={`העתקת ${label}`}
             onClick={() => void onCopy(label, value)}
           >
             {copied === label ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}

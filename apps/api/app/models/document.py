@@ -45,6 +45,13 @@ class Document(Base):
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Text widgets of an uploaded AcroForm: name, page, rect, emptiness and the bound slot.
     form_anchors: Mapped[JsonList | None] = mapped_column(JSON, nullable=True)
+    # evidence: an ordinary upload. form: an office AcroForm this case may fill.
+    role: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="evidence", server_default="evidence"
+    )
+    display_title: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Why a classified file did or did not fill slots. Office-facing, no guessed values.
+    reading_report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

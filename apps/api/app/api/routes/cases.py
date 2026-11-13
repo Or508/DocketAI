@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
@@ -12,6 +12,7 @@ from app.core.deps import get_case_service, get_container
 from app.db.session import get_session
 from app.schemas.case import CaseCreate, CaseRead
 from app.schemas.chat import ChatRequest, FieldUpdateRequest
+from app.schemas.forms import DocumentRoleRead, DocumentRoleUpdate, FillReport, IntakeSummary
 from app.schemas.gap import FillAndSignRequest, GapReport, ManualClassifyRequest
 from app.schemas.workspace import CaseWorkspace, UploadResult
 from app.services.case_service import CaseService
@@ -67,10 +68,13 @@ async def upload_documents(
     case_id: UUID,
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
+    document_type: str | None = Form(default=None, max_length=64),
+    role: str | None = Form(default=None, max_length=16),
+    replace_existing: bool = Form(default=False),
     service: CaseService = Depends(get_case_service),
     container: Container = Depends(get_container),
 ) -> UploadResult:
-    result, schedule = await service.add_uploads(case_id, files)
+    result, schedule = await service.add_uploads(case_id, files, document_type, role, replace_existing)
     if schedule:
         job_id = await enqueue_case_processing(case_id)
         if job_id is None:
@@ -177,6 +181,59 @@ async def download_document(
         },
         background=BackgroundTask(reader.close),
     )
+
+
+@router.delete("/{case_id}/documents/{document_id}", response_model=CaseWorkspace)
+async def delete_document(
+    case_id: UUID,
+    document_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> CaseWorkspace:
+    return await service.delete_document(case_id, document_id)
+
+
+@router.put("/{case_id}/documents/{document_id}/role", response_model=DocumentRoleRead)
+async def set_document_role(
+    case_id: UUID,
+    document_id: UUID,
+    payload: DocumentRoleUpdate,
+    service: CaseService = Depends(get_case_service),
+) -> DocumentRoleRead:
+    return await service.set_document_role(case_id, document_id, payload)
+
+
+@router.get("/{case_id}/documents/{document_id}/filled-preview")
+async def filled_preview(
+    case_id: UUID,
+    document_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> Response:
+    data = await service.filled_preview(case_id, document_id)
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "inline",
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/{case_id}/documents/{document_id}/fill-report", response_model=FillReport)
+async def fill_report(
+    case_id: UUID,
+    document_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> FillReport:
+    return await service.fill_report(case_id, document_id)
+
+
+@router.get("/{case_id}/intake", response_model=IntakeSummary)
+async def intake_summary(
+    case_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> IntakeSummary:
+    return await service.intake(case_id)
 
 
 @router.get("/{case_id}/signed-document")

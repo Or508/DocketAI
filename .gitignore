@@ -16,3 +16,4 @@ apps/api/app/assets/templates/*.pdf
 .DS_Store
 *.tsbuildinfo
 *.egg-info/
+test_files_for_browser/

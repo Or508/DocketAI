@@ -19,8 +19,20 @@ from reportlab.pdfgen import canvas
 from app.schemas.case import CaseAudit, CaseCertificate, CaseRead
 from app.schemas.chat import ChatRequest, FieldUpdateRequest
 from app.schemas.events import CaseProgressEvent, StreamError
-from app.schemas.gap import FormAnchorRef, OpenSlot, PipelineProgress, UnboundAnchor
-from app.schemas.process import FieldSource
+from app.schemas.forms import (
+    DocumentReadingReport,
+    DocumentRoleRead,
+    DocumentRoleUpdate,
+    FillReport,
+    FillReportField,
+    IntakeForm,
+    IntakeSummary,
+    SlotConflict,
+    SlotHit,
+    SlotSkip,
+)
+from app.schemas.gap import FormAnchorRef, OpenSlot, PipelineProgress, UnboundAnchor, WhyItem
+from app.schemas.process import DocumentReading, DocumentTypeSpec, FieldSource, FieldSpec, Provenance, ReadingPart, ReadingRule
 from app.schemas.workspace import CaseWorkspace
 from app.schemas.portal import PortalProcess, PortalSeal, PortalSignRequest, PortalView, SigningLinkCreated, SigningLinkRead
 
@@ -43,8 +55,25 @@ _PAIRS = {
     "PortalView": PortalView,
     "PortalSignRequest": PortalSignRequest,
     "FieldSource": FieldSource,
+    "ReadingPart": ReadingPart,
+    "ReadingRule": ReadingRule,
+    "DocumentReading": DocumentReading,
+    "DocumentTypeSpec": DocumentTypeSpec,
+    "Provenance": Provenance,
+    "FieldSpec": FieldSpec,
     "FormAnchorRef": FormAnchorRef,
+    "WhyItem": WhyItem,
     "OpenSlot": OpenSlot,
+    "DocumentRoleUpdate": DocumentRoleUpdate,
+    "DocumentRoleRead": DocumentRoleRead,
+    "FillReportField": FillReportField,
+    "FillReport": FillReport,
+    "IntakeForm": IntakeForm,
+    "IntakeSummary": IntakeSummary,
+    "SlotHit": SlotHit,
+    "SlotSkip": SlotSkip,
+    "SlotConflict": SlotConflict,
+    "DocumentReadingReport": DocumentReadingReport,
     "UnboundAnchor": UnboundAnchor,
     "CaseWorkspace": CaseWorkspace,
 }

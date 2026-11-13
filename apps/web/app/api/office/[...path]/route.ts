@@ -99,7 +99,7 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
     return response;
   } catch {
     return NextResponse.json(
-      { detail: "The office service could not be reached." },
+      { detail: "לא ניתן להגיע לשירות המשרד." },
       { status: 502, headers: { "Cache-Control": "no-store" } },
     );
   }

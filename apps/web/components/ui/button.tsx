@@ -5,14 +5,14 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition duration-200 hover:-translate-y-0.5 disabled:pointer-events-none disabled:opacity-50 disabled:hover:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper",
   {
     variants: {
       variant: {
-        default: "bg-tide text-paper hover:bg-[#0c3d3b]",
-        outline: "border border-line bg-white/70 text-ink hover:bg-white",
+        default: "bg-tide text-white shadow-sm hover:bg-[#082e2c]",
+        outline: "border-2 border-ink/30 bg-white text-ink hover:border-tide hover:bg-white",
         ghost: "text-ink hover:bg-black/5",
-        danger: "bg-clay text-white hover:bg-[#762f21]",
+        danger: "bg-clay text-white hover:bg-[#5e2216]",
       },
       size: {
         default: "h-10",

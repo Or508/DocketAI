@@ -42,6 +42,13 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "parcel_number": ("parcel", "gush helka", "גוש חלקה", "גוש", "חלקה"),
     "price": ("purchase price", "consideration", "מחיר", "תמורה"),
     "contract_date": ("contract date", "agreement date", "תאריך החוזה", "תאריך ההסכם"),
+    "first_name": ("שם פרטי",),
+    "last_name": ("שם משפחה",),
+    "city": ("עיר", "ישוב", "יישוב"),
+    "street": ("רחוב",),
+    "bank_name": ("בנק",),
+    "bank_branch": ("סניף",),
+    "bank_account": ("חשבון", "מס חשבון"),
 }
 
 _SEPARATORS = re.compile(r"[\s_\-./:]+")

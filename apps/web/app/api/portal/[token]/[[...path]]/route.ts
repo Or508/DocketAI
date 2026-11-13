@@ -42,7 +42,7 @@ async function proxy(request: Request, context: { params: Promise<{ token: strin
     return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
   } catch {
     return NextResponse.json(
-      { detail: "The signing service could not be reached." },
+      { detail: "לא ניתן להגיע לשירות החתימה." },
       { status: 502, headers: { "Cache-Control": "no-store" } },
     );
   }

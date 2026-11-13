@@ -9,6 +9,14 @@ from app.services.document_processor import PageImage
 
 logger = logging.getLogger(__name__)
 
+_TRANSCRIBE_PROMPT = (
+    "Transcribe the words printed on the page, line after line, in reading order and in the "
+    "language they are written in. Copy every letter of each word. Do not shorten, complete, "
+    "or correct a word. Return plain text only: no JSON, no field names, no headings of your "
+    "own, no summary, and no translation. Do not add or infer anything that is not on the page. "
+    "If nothing is readable, return nothing."
+)
+
 
 class GeminiUnavailable(RuntimeError):
     pass
@@ -28,6 +36,8 @@ class GeminiClient(Protocol):
     async def extract_fields(self, *, message: str, fields: list[FieldSpec]) -> FieldExtraction: ...
 
     async def embed(self, text: str) -> list[float]: ...
+
+    async def transcribe(self, images: list[PageImage]) -> str: ...
 
     def stream_text(self, *, system: str, prompt: str) -> AsyncIterator[str]: ...
 
@@ -112,6 +122,31 @@ class GoogleGeminiClient:
             ),
         )
         return _parse(response, FieldExtraction)
+
+    async def transcribe(self, images: list[PageImage]) -> str:
+        """Return the words on the page as plain lines. No key or a failed call returns ""."""
+        import asyncio
+
+        if not self.configured or not images:
+            return ""
+        try:
+            return await asyncio.to_thread(self._transcribe_sync, images)
+        except Exception:
+            logger.warning("Page transcription failed")
+            return ""
+
+    def _transcribe_sync(self, images: list[PageImage]) -> str:
+        from google.genai import types
+
+        contents: list[object] = [_TRANSCRIBE_PROMPT]
+        for image in images:
+            contents.append(types.Part.from_bytes(data=image.data, mime_type=image.mime_type))
+        response = self._client().models.generate_content(
+            model=self._settings.gemini_model,
+            contents=contents,
+            config=types.GenerateContentConfig(temperature=0),
+        )
+        return (getattr(response, "text", None) or "").strip()
 
     async def stream_text(self, *, system: str, prompt: str) -> AsyncIterator[str]:
         from google.genai import types
