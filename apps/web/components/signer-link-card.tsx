@@ -95,9 +95,16 @@ export function SignerLinkCard({ caseId }: { caseId: string }) {
             <p dir="auto" className="break-all rounded-md border border-line bg-white px-3 py-2">
               {freshUrl}
             </p>
-            <Button type="button" variant="outline" onClick={() => void copy()}>
-              העתקת הקישור
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={() => void copy()}>
+                העתק קישור
+              </Button>
+              <Button asChild>
+                <a href={freshUrl} target="_blank" rel="noopener noreferrer">
+                  פתח פורטל חתימה בטאב חדש ↗
+                </a>
+              </Button>
+            </div>
           </div>
         ) : null}
         {note ? <p className="text-clay">{note}</p> : null}

@@ -4,6 +4,7 @@ import type { FieldSource, FieldSpec, ProcessRead } from "@docketai/shared-types
 import { formatEmail, formatPhone, israeliIdStatus } from "@docketai/shared-types";
 import { useEffect, useRef, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FIELD_LABEL, sourceBadge } from "@/lib/filing";
 import { ApiError } from "@/lib/api";
@@ -40,7 +41,7 @@ export function FieldVerification({
     const next: Record<string, string> = {};
     for (const field of process.required_fields) {
       const stored = field_values[field.key] ?? "";
-      next[field.key] = field.field_type === "phone" ? phoneDraft(processKey, stored) : stored;
+      next[field.key] = displayValue(processKey, field, stored);
     }
     setDrafts(next);
   }, [field_values, process.required_fields, processKey]);
@@ -65,9 +66,9 @@ export function FieldVerification({
 
   function change(field: FieldSpec, value: string) {
     let next = value;
-    if (field.field_type === "phone") next = phoneDraft(processKey, value);
+    if (isNumericSlot(field)) next = field.field_type === "phone" ? phoneDraft(processKey, value) : normalizeNumeric(value);
+    if (field.field_type === "id_number") next = next.slice(0, 9);
     if (field.field_type === "email") next = formatEmail(value);
-    if (field.field_type === "id_number") next = value.replace(/[^\d]/g, "").slice(0, 9);
     setDrafts((current) => ({ ...current, [field.key]: next }));
   }
 
@@ -80,7 +81,7 @@ export function FieldVerification({
       return;
     }
     if (!raw.trim()) return;
-    const payload = field.field_type === "phone" ? raw.replace(/\D/g, "") : raw.trim();
+    const payload = payloadFor(processKey, field, raw);
     setErrors((current) => ({ ...current, [field.key]: "" }));
     try {
       await onSave(field.key, payload);
@@ -92,11 +93,41 @@ export function FieldVerification({
 
   const grouped = new Set(GROUPS.flatMap((group) => group.keys));
   const rest = process.required_fields.filter((field) => !grouped.has(field.key));
+  const dirty = process.required_fields.filter((field) => {
+    const raw = drafts[field.key] ?? "";
+    if (!raw.trim()) return false;
+    return comparable(field, raw) !== comparable(field, field_values[field.key] ?? "");
+  });
+
+  async function saveAll() {
+    for (const field of dirty) {
+      const problem = localProblem(processKey, field, drafts[field.key] ?? "");
+      if (problem) {
+        setErrors((current) => ({ ...current, [field.key]: problem }));
+        return;
+      }
+    }
+    for (const field of dirty) {
+      try {
+        await onSave(field.key, payloadFor(processKey, field, drafts[field.key] ?? ""));
+        setErrors((current) => ({ ...current, [field.key]: "" }));
+      } catch (reason) {
+        const message = reason instanceof ApiError ? reason.message : "הפרט לא נשמר. בדקו את הערך ונסו שוב.";
+        setErrors((current) => ({ ...current, [field.key]: message }));
+        return;
+      }
+    }
+  }
 
   return (
     <section className="rounded-lg border-2 border-ink/15 bg-white shadow-card">
       <div className="border-b-2 border-ink/10 px-4 py-4">
-        <h2 className="font-serif text-2xl">בקרת ותיקון פרטים אישיים לפני חתימה</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-serif text-2xl">בקרת ותיקון פרטים אישיים לפני חתימה</h2>
+          <Button type="button" variant="outline" disabled={busy || dirty.length === 0} onClick={() => void saveAll()}>
+            שמור את כל השדות
+          </Button>
+        </div>
         <p className="mt-2 text-sm leading-6 text-ink">
           כאן מתקנים רק פרט אישי שנקרא לא נכון או חסר: שם, זהות, יישוב, רחוב, מספר בית, טלפון וחשבון. נוסח חוקי או סעיף סטטוטורי לא נערכים במסך הזה.
         </p>
@@ -200,13 +231,36 @@ function idMessage(status: string | undefined) {
   return "";
 }
 
+function isNumericSlot(field: FieldSpec) {
+  return field.field_type === "phone" || field.field_type === "id_number" || field.key === "bank_branch" || field.key === "bank_account";
+}
+
+function normalizeNumeric(raw: string) {
+  return raw.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, "").replace(/[\s\u00a0-]/g, "").replace(/\D/g, "");
+}
+
+function displayValue(processKey: string, field: FieldSpec, raw: string) {
+  if (field.field_type === "phone") return phoneDraft(processKey, raw);
+  if (field.field_type === "id_number") return normalizeNumeric(raw).slice(0, 9);
+  if (isNumericSlot(field)) return normalizeNumeric(raw);
+  return raw;
+}
+
+function payloadFor(processKey: string, field: FieldSpec, raw: string) {
+  if (field.field_type === "phone") return phoneDraft(processKey, raw).replace(/\D/g, "");
+  if (isNumericSlot(field)) return field.field_type === "id_number" ? normalizeNumeric(raw).slice(0, 9) : normalizeNumeric(raw);
+  if (field.field_type === "email") return formatEmail(raw);
+  return raw.trim();
+}
+
 function phoneDraft(processKey: string, raw: string): string {
-  if (processKey === "bl_6101") return raw.replace(/\D/g, "").slice(0, 10);
-  return formatPhone(raw);
+  const digits = normalizeNumeric(raw);
+  if (processKey === "bl_6101") return digits.slice(0, 10);
+  return formatPhone(digits);
 }
 
 function comparable(field: FieldSpec, raw: string): string {
-  if (field.field_type === "phone" || field.field_type === "id_number") return raw.replace(/\D/g, "");
+  if (isNumericSlot(field)) return normalizeNumeric(raw);
   if (field.field_type === "email") return formatEmail(raw);
   return raw.trim();
 }

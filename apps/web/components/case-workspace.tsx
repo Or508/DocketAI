@@ -28,6 +28,8 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
   const [busy, setBusy] = useState(false);
   const [signing, setSigning] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(true);
+  const [previewLarge, setPreviewLarge] = useState(false);
+  const [rereading, setRereading] = useState(false);
   const [watch, setWatch] = useState(false);
   const [slotErrors, setSlotErrors] = useState<Record<string, string>>({});
   const [pendingSlots, setPendingSlots] = useState<string[]>([]);
@@ -135,6 +137,15 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
     };
   }, [processing, caseId, refresh]);
 
+  useEffect(() => {
+    if (!previewLarge) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setPreviewLarge(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewLarge]);
+
   async function run(action: () => Promise<CaseWorkspace>, note?: string) {
     setBusy(true);
     setError(null);
@@ -204,6 +215,29 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
     return next;
   }
 
+  async function rereadDocuments() {
+    if (!workspace) return;
+    const formIds = new Set((intake?.forms ?? []).filter((item) => item.role === "form").map((item) => item.document_id));
+    const sources = workspace.gap.identified.filter((item) => item.document_type && !formIds.has(item.document_id));
+    if (!sources.length) {
+      setError("אין מסמכי מקור מסווגים לקריאה מחדש.");
+      return;
+    }
+    setRereading(true);
+    setError(null);
+    try {
+      for (const document of sources) {
+        await api.classify(caseId, document.document_id, document.document_type);
+      }
+      setNotice("השדות נקראו מחדש מהמסמכים.");
+      await refresh();
+    } catch (reason) {
+      setError(hebrewOfficeError(reason));
+    } finally {
+      setRereading(false);
+    }
+  }
+
   async function removeDocument(slot: string, documentId: string) {
     setSlotErrors((current) => ({ ...current, [slot]: "" }));
     try {
@@ -247,6 +281,13 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
 
   const form = intake?.forms.find((item) => item.role === "form") ?? null;
   const tone = folderFromWorkspace(workspace);
+  const previewRev = [
+    workspace.case.updated_at,
+    form?.document_id ?? "",
+    workspace.gap.identified.map((item) => item.document_id).join(","),
+    stamp(Object.keys(workspace.field_values).sort().map((key) => workspace.field_values[key]).join("\n")),
+  ].join("|");
+  const previewUrl = form ? filledFormUrl(caseId, form.document_id) : "";
 
   return (
     <main className="mx-auto min-h-screen max-w-7xl px-5 py-6">
@@ -279,6 +320,8 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
           onUpload={queueUpload}
           onRemove={removeDocument}
           onMove={moveDocument}
+          onReread={rereadDocuments}
+          rereading={rereading}
         />
         <FieldVerification
           processKey={workspace.process.key}
@@ -302,18 +345,32 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
         />
         <div className="space-y-5">
           <section className="rounded-lg border-2 border-ink/15 bg-white shadow-card">
-            <div className="flex items-center justify-between gap-3 border-b-2 border-ink/10 px-4 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-ink/10 px-4 py-4">
               <h2 className="font-serif text-2xl">טיוטת הטופס הממולא</h2>
-              <Button type="button" variant="outline" onClick={() => setPreviewOpen((open) => !open)}>
-                {previewOpen ? "כיווץ" : "פתיחה"}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" disabled={!form} onClick={() => setPreviewLarge(true)}>
+                  הגדל למסך מלא
+                </Button>
+                {form ? (
+                  <a
+                    className="inline-flex h-10 items-center rounded-md border-2 border-ink/30 bg-white px-3 text-sm font-semibold text-ink"
+                    href={`${previewUrl}?rev=${encodeURIComponent(previewRev)}`}
+                    download="טיוטת-טופס.pdf"
+                  >
+                    הורד טיוטה
+                  </a>
+                ) : null}
+                <Button type="button" variant="outline" onClick={() => setPreviewOpen((open) => !open)}>
+                  {previewOpen ? "כיווץ" : "פתיחה"}
+                </Button>
+              </div>
             </div>
             {previewOpen ? (
               <div className="max-h-[40rem] overflow-auto px-4 py-4">
                 {form ? (
                   <>
-                    <PdfCanvas url={filledFormUrl(caseId, form.document_id)} refreshKey={workspace.case.updated_at} />
-                    <FillReportList caseId={caseId} documentId={form.document_id} refreshKey={workspace.case.updated_at} />
+                    <PdfCanvas url={previewUrl} refreshKey={previewRev} />
+                    <FillReportList caseId={caseId} documentId={form.document_id} refreshKey={previewRev} />
                   </>
                 ) : (
                   <p className="text-sm text-ink">סמנו PDF כטופס למילוי וחתימה כדי לראות את הטיוטה כאן.</p>
@@ -346,6 +403,39 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
         <ReadingPanel workspace={workspace} />
       </div>
 
+      {previewLarge && form ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-[#16130f]/80 p-3 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="טיוטת הטופס הממולא"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setPreviewLarge(false);
+          }}
+        >
+          <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col rounded-lg border-2 border-ink bg-paper shadow-card">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-ink/15 px-4 py-3">
+              <h2 className="font-serif text-2xl">טיוטת הטופס הממולא</h2>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  className="inline-flex h-11 items-center rounded-md bg-tide px-3 text-sm font-semibold text-white"
+                  href={`${previewUrl}?rev=${encodeURIComponent(previewRev)}`}
+                  download="טיוטת-טופס.pdf"
+                >
+                  הורד טיוטה
+                </a>
+                <Button type="button" variant="outline" onClick={() => setPreviewLarge(false)}>
+                  סגירה
+                </Button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto bg-[#f4f0e6] px-4 py-4">
+              <PdfCanvas url={previewUrl} refreshKey={previewRev} maxPages={8} scale={1.6} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <SigningModal
         open={signing}
         busy={busy}
@@ -358,6 +448,12 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
       />
     </main>
   );
+}
+
+function stamp(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) hash = (hash * 33 + value.charCodeAt(index)) >>> 0;
+  return hash.toString(36);
 }
 
 type DrawerClaim = { slot: string; filename: string };

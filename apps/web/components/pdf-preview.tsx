@@ -5,7 +5,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { documentFileUrl } from "@/lib/api";
 
-export function PdfCanvas({ url, refreshKey = "" }: { url: string; refreshKey?: string }) {
+export function PdfCanvas({
+  url,
+  refreshKey = "",
+  maxPages = 3,
+  scale = 1.15,
+}: {
+  url: string;
+  refreshKey?: string;
+  maxPages?: number;
+  scale?: number;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const [note, setNote] = useState<string | null>(null);
 
@@ -23,15 +33,18 @@ export function PdfCanvas({ url, refreshKey = "" }: { url: string; refreshKey?: 
       try {
         const pdfjs = await import("pdfjs-dist");
         pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-        const response = await fetch(url);
+        const stamped = refreshKey
+          ? `${url}${url.includes("?") ? "&" : "?"}rev=${encodeURIComponent(refreshKey)}`
+          : url;
+        const response = await fetch(stamped, { cache: "no-store" });
         if (!response.ok) throw new Error("לא ניתן לטעון את התצוגה.");
         const data = new Uint8Array(await response.arrayBuffer());
         const pdf = await pdfjs.getDocument({ data }).promise;
-        const count = Math.min(pdf.numPages, 3);
+        const count = Math.min(pdf.numPages, maxPages);
         for (let pageNumber = 1; pageNumber <= count; pageNumber += 1) {
           if (cancelled) break;
           const page = await pdf.getPage(pageNumber);
-          const viewport = page.getViewport({ scale: 1.15 });
+          const viewport = page.getViewport({ scale });
           const canvas = document.createElement("canvas");
           canvas.width = viewport.width;
           canvas.height = viewport.height;
@@ -47,7 +60,7 @@ export function PdfCanvas({ url, refreshKey = "" }: { url: string; refreshKey?: 
     return () => {
       cancelled = true;
     };
-  }, [url, refreshKey]);
+  }, [url, refreshKey, maxPages, scale]);
 
   return (
     <>

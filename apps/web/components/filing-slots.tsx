@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { CaseWorkspace, IntakeSummary } from "@docketai/shared-types";
 
+import { Button } from "@/components/ui/button";
 import { DRAWER_ACCEPT, filesFromTransfer } from "@/lib/clipboard-files";
 import { SLOT_LABEL } from "@/lib/filing";
 
@@ -21,6 +22,8 @@ export function FilingSlots({
   onUpload,
   onRemove,
   onMove,
+  onReread,
+  rereading,
 }: {
   workspace: CaseWorkspace;
   intake: IntakeSummary | null;
@@ -29,6 +32,8 @@ export function FilingSlots({
   onUpload: (slot: string, file: File, replace?: boolean) => Promise<void>;
   onRemove: (slot: string, documentId: string) => Promise<void>;
   onMove: (documentId: string, fromSlot: string, toSlot: string) => Promise<void>;
+  onReread: () => Promise<void>;
+  rereading: boolean;
 }) {
   const [armed, setArmed] = useState<string | null>(null);
   const forms = intake?.forms.filter((item) => item.role === "form") ?? [];
@@ -82,8 +87,15 @@ export function FilingSlots({
 
   return (
     <section className="rounded-lg border-2 border-ink/15 bg-white p-5 shadow-card">
-      <h2 className="font-serif text-2xl">מגירות מסמכים</h2>
-      <p className="mt-1 text-sm text-ink">אפשר להעלות, לגרור, או להדביק צילום מסך (Ctrl+V) על המגירה. ירוק — הקובץ במקום.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-serif text-2xl">מגירות מסמכים</h2>
+          <p className="mt-1 text-sm text-ink">אפשר להעלות, לגרור, או להדביק צילום מסך (Ctrl+V) על המגירה. ירוק — הקובץ במקום.</p>
+        </div>
+        <Button type="button" variant="outline" disabled={rereading} onClick={() => void onReread()}>
+          {rereading ? "קוראים מחדש…" : "קרא מחדש מהמסמכים"}
+        </Button>
+      </div>
       <div className="mt-4 grid gap-3">
         <Slot
           slot="form"
