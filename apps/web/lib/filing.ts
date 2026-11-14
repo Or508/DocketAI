@@ -11,8 +11,11 @@ export const FOLDER_LABEL: Record<FolderTone, string> = {
 
 export const PROCESS_LABEL: Record<string, string> = {
   bl_6101: "בל/6101 – דיווח רב-שנתי ביטוח לאומי",
+  "Insured details declaration": "בל/6101 – דיווח רב-שנתי ביטוח לאומי",
   onboarding: "קליטת עובד",
+  "Employee onboarding": "קליטת עובד",
   real_estate: "עסקת מקרקעין",
+  "Real estate closing": "עסקת מקרקעין",
 };
 
 export const SLOT_LABEL: Record<string, string> = {

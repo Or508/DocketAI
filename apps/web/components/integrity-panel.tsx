@@ -35,7 +35,7 @@ export function IntegrityPanel({
           מזהה אימות <span className="break-all font-mono text-xs">{seal.signer_verification_id}</span>
         </p>
         <div>
-          <p className="text-sm leading-6">טביעת אצבע SHA-256</p>
+          <p className="text-sm leading-6">טביעת האצבע של הקובץ החתום</p>
           <p className="mt-2 break-all rounded-md border border-line bg-[#fbf8f2] p-3 font-mono text-xs leading-5">
             {seal.file_sha256}
           </p>
@@ -61,11 +61,6 @@ export function IntegrityPanel({
           </p>
         ) : null}
         <p className="text-sm leading-6">טביעת האצבע של הקובץ שהורדתם צריכה להיות זהה.</p>
-        <details className="rounded-md border border-line bg-[#fbf8f2]">
-          <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm">איך בודקים את הקובץ</summary>
-          <pre className="whitespace-pre-wrap break-all px-3 pb-3 font-mono text-xs leading-5">{`shasum -a 256 signed-document.pdf
-certutil -hashfile signed-document.pdf SHA256`}</pre>
-        </details>
         <div className="flex flex-col gap-2">
           <Button asChild className="min-h-11 w-full">
             <a href={signedPdfUrl}>הורדת הטופס החתום</a>

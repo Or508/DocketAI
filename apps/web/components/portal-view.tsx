@@ -8,8 +8,8 @@ import { PdfCanvas } from "@/components/pdf-preview";
 import { SignatureForm, SigningModal } from "@/components/signing-modal";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
-import { FIELD_LABEL } from "@/lib/filing";
-import { hebrewOfficeError } from "@/lib/hebrew";
+import { FIELD_LABEL, processLabel } from "@/lib/filing";
+import { hebrewOfficeError, hebrewPortalCopy } from "@/lib/hebrew";
 import { portalApi, portalCertificateUrl, portalDownloadUrl, portalPreviewUrl } from "@/lib/portal-api";
 
 const RECORDING = "נרשמים מועד החתימה, כתובת הרשת ופרטי הדפדפן על גבי אישור החתימה.";
@@ -113,7 +113,7 @@ export function PortalViewScreen({ token }: { token: string }) {
     <main className="mx-auto flex min-w-0 max-w-3xl flex-col gap-5 overflow-x-clip px-4 py-8">
       <header>
         <p className="text-sm font-semibold text-tide">חתימת לקוח</p>
-        <h1 className="font-serif text-4xl">{view.process.name}</h1>
+        <h1 className="font-serif text-4xl">{processLabel(view.process.name, view.process.name)}</h1>
         {view.client_name ? <p className="mt-2 text-lg">{view.client_name}</p> : null}
       </header>
       <nav aria-label="שלבי החתימה" className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
@@ -180,7 +180,7 @@ export function PortalViewScreen({ token }: { token: string }) {
         <section className="rounded-lg border-2 border-ink/15 bg-white p-4 shadow-card">
           <h2 className="font-serif text-2xl">חתימה דיגיטלית</h2>
           <div className="mt-4 md:hidden">
-            <SignatureForm busy={busy} consentLabel={view.consent_text} notice={RECORDING} onSign={sign} />
+            <SignatureForm busy={busy} consentLabel={hebrewPortalCopy(view.consent_text)} notice={RECORDING} onSign={sign} />
           </div>
           <div className="mt-4 hidden md:block">
             <Button type="button" className="min-h-11 w-full" onClick={() => setSigning(true)} disabled={busy}>
@@ -189,7 +189,7 @@ export function PortalViewScreen({ token }: { token: string }) {
             <SigningModal
               open={signing}
               busy={busy}
-              consentLabel={view.consent_text}
+              consentLabel={hebrewPortalCopy(view.consent_text)}
               notice={RECORDING}
               onOpenChange={setSigning}
               onSign={sign}

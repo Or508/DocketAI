@@ -15,6 +15,16 @@ export const FILL_STATUS_LABEL: Record<FillStatus, string> = {
 
 export const PHONE_BOXES_NOTE = "בבל/6101 הטלפון נכנס לתיבות ספרות: בדיוק 10 ספרות, למשל 0501234567, בלי מקף.";
 
+const PORTAL_PHRASES: Record<string, string> = {
+  "I have reviewed this form and I am signing it electronically.":
+    "עברתי על הטופס ואני חותם עליו בחתימה אלקטרונית.",
+};
+
+export function hebrewPortalCopy(value: string): string {
+  const text = value.trim();
+  return PORTAL_PHRASES[text] ?? text;
+}
+
 export function hebrewOfficeError(error: unknown): string {
   if (!(error instanceof ApiError)) return "הפעולה נכשלה.";
   return hebrewDetail(error.status, error.message);
