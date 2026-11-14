@@ -116,6 +116,7 @@ export const api = {
   signingLink: (caseId: string) => request<SigningLinkRead>(`/cases/${caseId}/signing-link`),
   revokeSigningLink: (caseId: string) =>
     request<void>(`/cases/${caseId}/signing-link`, { method: "DELETE" }),
+  reopenCase: (caseId: string) => request<CaseWorkspace>(`/cases/${caseId}/reopen`, { method: "POST" }),
   intake: (caseId: string) => request<IntakeSummary>(`/cases/${caseId}/intake`),
   fillReport: (caseId: string, documentId: string) =>
     request<FillReport>(`/cases/${caseId}/documents/${documentId}/fill-report`),
@@ -132,6 +133,29 @@ export function signedDocumentUrl(caseId: string) {
 
 export function certificateUrl(caseId: string) {
   return `${base}/cases/${caseId}/certificate`;
+}
+
+export async function downloadCaseArchive(caseId: string, filename: string) {
+  const response = await fetch(`${base}/cases/${caseId}/archive`, { cache: "no-store" });
+  if (response.status === 401) redirectToLogin();
+  if (!response.ok) {
+    let message = response.statusText;
+    try {
+      message = detailFrom(await response.json());
+    } catch {
+      message = response.statusText;
+    }
+    throw new ApiError(message || "Request failed", response.status);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function documentFileUrl(caseId: string, documentId: string) {

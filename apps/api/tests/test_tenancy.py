@@ -87,6 +87,8 @@ def test_another_organization_gets_404_and_changes_nothing(client: TestClient, t
         ("GET", f"/cases/{case_id}/intake", None, None),
         ("GET", f"/cases/{case_id}/signed-document", None, None),
         ("GET", f"/cases/{case_id}/certificate", None, None),
+        ("GET", f"/cases/{case_id}/archive", None, None),
+        ("POST", f"/cases/{case_id}/reopen", None, None),
         ("POST", f"/cases/{case_id}/signing-links", None, None),
         ("GET", f"/cases/{case_id}/signing-link", None, None),
         ("DELETE", f"/cases/{case_id}/signing-link", None, None),

@@ -34,3 +34,5 @@ class AuditAction(str, Enum):
     FIELD_PREFILLED = "field_prefilled"
     DOCUMENT_ROLE_CHANGED = "document_role_changed"
     DOCUMENT_REMOVED = "document_removed"
+    ARCHIVE_EXPORTED = "archive_exported"
+    CASE_REOPENED = "case_reopened"

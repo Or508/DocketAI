@@ -250,3 +250,37 @@ async def download_signed_document(
             "Cache-Control": "no-store",
         },
     )
+
+
+@router.get("/{case_id}/archive")
+async def download_archive(
+    case_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> StreamingResponse:
+    bundle, size = await service.archive(case_id)
+
+    def chunks():
+        while True:
+            block = bundle.read(64 * 1024)
+            if not block:
+                return
+            yield block
+
+    return StreamingResponse(
+        chunks(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="case_{case_id}_archive.zip"',
+            "Content-Length": str(size),
+            "Cache-Control": "no-store",
+        },
+        background=BackgroundTask(bundle.close),
+    )
+
+
+@router.post("/{case_id}/reopen", response_model=CaseWorkspace)
+async def reopen_case(
+    case_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> CaseWorkspace:
+    return await service.reopen(case_id)

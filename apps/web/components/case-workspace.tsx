@@ -17,7 +17,8 @@ import { StatusPill } from "@/components/status-pill";
 import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
 import { OfficeBar } from "@/components/office-bar";
-import { ApiError, api, filledFormUrl, signedDocumentUrl } from "@/lib/api";
+import { ApiError, api, downloadCaseArchive, filledFormUrl, signedDocumentUrl } from "@/lib/api";
+import { archiveFilename } from "@/lib/dispatch";
 import { folderFromWorkspace, processLabel } from "@/lib/filing";
 import { hebrewDetail, hebrewOfficeError, hebrewUploadReason } from "@/lib/hebrew";
 
@@ -289,6 +290,37 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
     stamp(Object.keys(workspace.field_values).sort().map((key) => workspace.field_values[key]).join("\n")),
   ].join("|");
   const previewUrl = form ? filledFormUrl(caseId, form.document_id) : "";
+  const archiveName = archiveFilename(workspace.case.client_name || workspace.case.name);
+
+  async function saveArchive() {
+    setBusy(true);
+    setError(null);
+    try {
+      await downloadCaseArchive(caseId, archiveName);
+    } catch (reason) {
+      setError(hebrewOfficeError(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reopenCase() {
+    const confirmed = window.confirm(
+      "פתיחת התיק מחדש משחררת את הפרטים לתיקון. החתימה הקיימת מתבטלת, והלקוח יצטרך לחתום שוב על קישור חדש. להמשיך?",
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.reopenCase(caseId);
+      setNotice("התיק נפתח מחדש. אפשר לתקן פרטים ואז לשלוח קישור חתימה חדש.");
+      await refresh();
+    } catch (reason) {
+      setError(hebrewOfficeError(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <main className="mx-auto min-h-screen max-w-7xl px-5 py-6">
@@ -301,7 +333,17 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
           <h1 className="mt-4 font-serif text-4xl">{workspace.case.client_name || workspace.case.name}</h1>
           <p className="mt-1 text-sm font-medium text-ink">{processLabel(workspace.process.key, workspace.process.name)}</p>
         </div>
-        <StatusPill tone={tone} />
+        <div className="flex w-full max-w-xs flex-col items-stretch gap-2 sm:w-auto">
+          <StatusPill tone={tone} />
+          <Button type="button" variant="outline" disabled={busy} onClick={() => void saveArchive()}>
+            הורדת תיק מלא לארכיון (ZIP)
+          </Button>
+          {workspace.case.status === "signed" ? (
+            <Button type="button" variant="ghost" disabled={busy} onClick={() => void reopenCase()}>
+              פתיחת תיק מחדש לתיקון
+            </Button>
+          ) : null}
+        </div>
       </header>
 
       {error ? (
@@ -379,7 +421,14 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
               </div>
             ) : null}
           </section>
-          <SignerLinkCard caseId={caseId} />
+          <SignerLinkCard
+            caseId={caseId}
+            clientName={workspace.case.client_name || workspace.case.name}
+            phone={workspace.field_values.phone ?? ""}
+            email={workspace.field_values.email ?? ""}
+            signed={workspace.case.status === "signed"}
+            verificationId={workspace.case.audit.signer_verification_id}
+          />
           <div className="rounded-lg border-2 border-ink/15 bg-white p-4">
             <Button type="button" variant="outline" disabled={!workspace.ready_to_sign || busy} onClick={() => setSigning(true)}>
               חתימת המשרד

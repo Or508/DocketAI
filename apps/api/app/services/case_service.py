@@ -1,14 +1,17 @@
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import re
 import tempfile
 import uuid
+import zipfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import IO
 
 import fitz
 
@@ -28,6 +31,13 @@ from app.core.exceptions import (
     SignedFileIntegrityError,
 )
 from app.core.time import utcnow
+from app.domain.archive import (
+    DRAFT_FORM_NAME,
+    MANIFEST_NAME,
+    SIGNED_FORM_NAME,
+    audit_entry,
+    source_name,
+)
 from app.domain.certificate import (
     OFFICE_CONSENT_TEXT,
     PORTAL_CONSENT_TEXT,
@@ -46,7 +56,7 @@ from app.domain.provenance import INTAKE_PROMPT_EN, INTAKE_PROMPT_HE, why_items
 from app.domain.readiness import signing_blockers
 from app.domain.slot_reading import apply_proposals, read_document, retract_document
 from app.domain.storage_keys import document_key, signed_keys
-from app.domain.signing_links import as_utc
+from app.domain.signing_links import as_utc, review_digest
 from app.domain.text_layout import contains_hebrew
 from app.models.audit_log import AuditLog
 from app.models.case import Case
@@ -1130,6 +1140,185 @@ class CaseService:
         finally:
             document.close()
 
+    async def archive(self, case_id: uuid.UUID) -> tuple[IO[bytes], int]:
+        """Build the office archive: the form, every source file, and a manifest of hashes.
+
+        Returns an open spooled file positioned at the start, and its size. The caller closes it.
+        """
+        case = await self._get_case(case_id)
+        exported_at = utcnow()
+        signed = case.status == CaseStatus.SIGNED and bool(case.output_path)
+        spool: IO[bytes] = tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024)
+        try:
+            with zipfile.ZipFile(spool, "w", zipfile.ZIP_DEFLATED) as bundle:
+                form_entry: dict[str, object] | None = None
+                if signed:
+                    # signed_pdf refuses bytes that do not match the recorded hash.
+                    data, _filename = await self.signed_pdf(case_id)
+                    await asyncio.to_thread(bundle.writestr, SIGNED_FORM_NAME, data)
+                    form_entry = {
+                        "archive_path": SIGNED_FORM_NAME,
+                        "kind": "signed",
+                        "sha256": hashlib.sha256(data).hexdigest(),
+                    }
+                else:
+                    form = _draft_form(case)
+                    if form is not None:
+                        filled = await self._fill_original(case, form)
+                        data = await asyncio.to_thread(self.container.pdf_filler.stamp_draft, filled.pdf_bytes)
+                        await asyncio.to_thread(bundle.writestr, DRAFT_FORM_NAME, data)
+                        form_entry = {
+                            "archive_path": DRAFT_FORM_NAME,
+                            "kind": "draft",
+                            "sha256": hashlib.sha256(data).hexdigest(),
+                            "document_id": str(form.id),
+                        }
+
+                documents: list[dict[str, object]] = []
+                taken: set[str] = set()
+                for document in sorted(case.documents, key=lambda item: (item.created_at, str(item.id))):
+                    try:
+                        data = await self.container.store.download_file(document.storage_path)
+                    except ObjectMissingError as exc:
+                        raise NotFoundError("The document file is missing.") from exc
+                    # A file nobody has typed yet is named for its role.
+                    typed = document.document_type if document.document_type not in {None, "", "unknown"} else None
+                    name = source_name(typed or document.role, document.original_filename, taken)
+                    await asyncio.to_thread(bundle.writestr, name, data)
+                    documents.append(
+                        {
+                            "id": str(document.id),
+                            "document_type": document.document_type,
+                            "role": document.role,
+                            "sha256": hashlib.sha256(data).hexdigest(),
+                            "upload_sha256": document.content_hash,
+                            "size": len(data),
+                            "archive_path": name,
+                        }
+                    )
+
+                seal: dict[str, object] | None = None
+                if signed:
+                    signed_at = as_utc(case.signed_at)
+                    seal = {
+                        "verification_id": case.signer_verification_id,
+                        "signed_at": signed_at.isoformat() if signed_at else None,
+                        "signed_pdf_sha256": case.file_sha256,
+                        "review_digest": _review_digest(case),
+                    }
+
+                # The export is part of the trail it exports.
+                self.session.add(
+                    AuditLog(
+                        case_id=case.id,
+                        action=AuditAction.ARCHIVE_EXPORTED,
+                        actor=self.scope.actor,
+                        new_value={
+                            "status": case.status.value,
+                            "documents": len(documents),
+                            "form_pdf": form_entry["archive_path"] if form_entry else None,
+                            "form_pdf_sha256": form_entry["sha256"] if form_entry else None,
+                        },
+                    )
+                )
+                await self.session.flush()
+                rows = (
+                    await self.session.scalars(
+                        select(AuditLog)
+                        .where(AuditLog.case_id == case.id)
+                        .order_by(AuditLog.created_at, AuditLog.id)
+                    )
+                ).all()
+                trail = []
+                for row in rows:
+                    stamp = as_utc(row.created_at)
+                    trail.append(
+                        audit_entry(
+                            event_id=row.id,
+                            action=AuditAction(row.action).value,
+                            actor=row.actor,
+                            created_at=stamp.isoformat() if stamp else None,
+                            document_id=row.document_id,
+                            previous_value=row.previous_value,
+                            new_value=row.new_value,
+                            notes=row.notes,
+                        )
+                    )
+                manifest = {
+                    "case_id": str(case.id),
+                    "process_type": case.process_definition.key,
+                    "status": case.status.value,
+                    "exported_at": exported_at.isoformat(),
+                    "signature_seal": seal,
+                    "form_pdf": form_entry,
+                    "documents": documents,
+                    "audit_trail": trail,
+                }
+                bundle.writestr(
+                    MANIFEST_NAME,
+                    json.dumps(manifest, indent=2, ensure_ascii=False).encode("utf-8"),
+                )
+            await self.session.commit()
+        except Exception:
+            spool.close()
+            await self.session.rollback()
+            raise
+        size = spool.tell()
+        spool.seek(0)
+        return spool, size
+
+    async def reopen(self, case_id: uuid.UUID) -> CaseWorkspace:
+        """Unlock a signed case for correction. Values, sources and files stay as they are.
+
+        The signature is dropped, every signing link of the case is revoked, and the
+        audit row keeps the identifiers of the packet this supersedes.
+        """
+        case = await self._locked_case(case_id)
+        if case is None:
+            raise NotFoundError("Case not found.")
+        if case.status != CaseStatus.SIGNED:
+            await self.session.rollback()
+            raise ConflictError("Only a signed case can be reopened.")
+        now = utcnow()
+        signed_at = as_utc(case.signed_at)
+        superseded = {
+            "status": case.status.value,
+            "superseded_verification_id": case.signer_verification_id,
+            "superseded_signed_pdf_sha256": case.file_sha256,
+            "superseded_content_sha256": case.content_sha256,
+            "superseded_signed_at": signed_at.isoformat() if signed_at else None,
+            "case_reference": case.case_reference,
+            # Where the superseded packet still lives in storage.
+            "output_path": case.output_path,
+            "content_path": case.content_path,
+        }
+        revoked = await self.session.execute(
+            update(SigningLink)
+            .where(SigningLink.case_id == case.id, SigningLink.revoked_at.is_(None))
+            .values(revoked_at=now, revoke_reason="case_reopened")
+        )
+        case.output_path = None
+        case.content_path = None
+        case.certificate_data = None
+        case.content_sha256 = None
+        case.file_sha256 = None
+        case.signer_verification_id = None
+        case.signed_at = None
+        case.status = CaseStatus.FILLING
+        self._refresh_pipeline(case)
+        case.updated_at = now
+        self.session.add(
+            AuditLog(
+                case_id=case.id,
+                action=AuditAction.CASE_REOPENED,
+                actor=self.scope.actor,
+                previous_value=superseded,
+                new_value={"status": case.status.value, "revoked_links": int(revoked.rowcount or 0)},
+            )
+        )
+        await self.session.commit()
+        return self._workspace(await self._get_case(case_id))
+
     def _mark_data_completion(self, case: Case) -> None:
         fields = _field_specs(case.process_definition)
         values = {str(key): str(value) for key, value in (case.field_values or {}).items()}
@@ -1583,6 +1772,27 @@ def _sign_form(case: Case) -> Document | None:
     if len(forms) != 1:
         raise ConflictError("Mark exactly one uploaded form before signing.")
     return forms[0]
+
+
+def _draft_form(case: Case) -> Document | None:
+    """The uploaded form an unsigned case would sign: the oldest readable one marked as a form."""
+    forms = [
+        document
+        for document in sorted(case.documents, key=lambda item: (item.created_at, str(item.id)))
+        if document.role == "form" and document.status != DocumentStatus.FAILED
+    ]
+    return forms[0] if forms else None
+
+
+def _review_digest(case: Case) -> str | None:
+    """The digest the signer reviewed: the values, and the form file or template they sit on."""
+    try:
+        form = _sign_form(case)
+    except ConflictError:
+        return None
+    token = form.content_hash if form is not None else case.process_definition.template_filename
+    values = {str(key): str(value) for key, value in (case.field_values or {}).items()}
+    return review_digest(values, token)
 
 
 _STALLED_AFTER_SECONDS = 120

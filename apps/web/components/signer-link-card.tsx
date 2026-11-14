@@ -5,7 +5,34 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ApiError, api } from "@/lib/api";
+import { israeliMobile, mailUrl, signedMessage, signingMessage, whatsAppUrl } from "@/lib/dispatch";
 import { hebrewOfficeError } from "@/lib/hebrew";
+
+const STORED_URL = "docket-sign-url:";
+
+function storedUrl(caseId: string) {
+  try {
+    return sessionStorage.getItem(STORED_URL + caseId);
+  } catch {
+    return null;
+  }
+}
+
+function rememberUrl(caseId: string, url: string) {
+  try {
+    sessionStorage.setItem(STORED_URL + caseId, url);
+  } catch {
+    /* Private mode can block storage. The address still shows once. */
+  }
+}
+
+function forgetUrl(caseId: string) {
+  try {
+    sessionStorage.removeItem(STORED_URL + caseId);
+  } catch {
+    /* Storage may be unavailable. */
+  }
+}
 
 function when(value: string) {
   return new Intl.DateTimeFormat("he-IL", {
@@ -15,7 +42,21 @@ function when(value: string) {
   }).format(new Date(value));
 }
 
-export function SignerLinkCard({ caseId }: { caseId: string }) {
+export function SignerLinkCard({
+  caseId,
+  clientName,
+  phone,
+  email,
+  signed,
+  verificationId,
+}: {
+  caseId: string;
+  clientName: string;
+  phone: string;
+  email: string;
+  signed: boolean;
+  verificationId: string | null;
+}) {
   const [link, setLink] = useState<SigningLinkRead | null>(null);
   const [freshUrl, setFreshUrl] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -43,6 +84,7 @@ export function SignerLinkCard({ caseId }: { caseId: string }) {
     try {
       const created = await api.createSigningLink(caseId);
       setFreshUrl(created.url);
+      rememberUrl(caseId, created.url);
       await load();
     } catch (error) {
       setNote(hebrewOfficeError(error));
@@ -63,6 +105,7 @@ export function SignerLinkCard({ caseId }: { caseId: string }) {
     try {
       await api.revokeSigningLink(caseId);
       setFreshUrl(null);
+      forgetUrl(caseId);
       await load();
     } catch (error) {
       setNote(hebrewOfficeError(error));
@@ -70,6 +113,17 @@ export function SignerLinkCard({ caseId }: { caseId: string }) {
       setBusy(false);
     }
   }
+
+  const reportedUrl = (() => {
+    if (!link || !("url" in link)) return null;
+    const value = (link as { url?: unknown }).url;
+    return typeof value === "string" && value ? value : null;
+  })();
+  const signingUrl = reportedUrl || freshUrl || storedUrl(caseId);
+  const mobile = israeliMobile(phone);
+  const readyText = signingUrl ? signingMessage(clientName, signingUrl) : "";
+  const signedText = verificationId ? signedMessage(clientName, verificationId, signingUrl) : "";
+  const open = link?.state === "open" && Boolean(signingUrl);
 
   return (
     <section className="rounded-lg border-2 border-tide bg-white shadow-card">
@@ -106,6 +160,38 @@ export function SignerLinkCard({ caseId }: { caseId: string }) {
               </Button>
             </div>
           </div>
+        ) : null}
+        {open ? (
+          <div className="space-y-2">
+            {mobile ? (
+              <Button asChild className="w-full">
+                <a href={whatsAppUrl(mobile, readyText)} target="_blank" rel="noopener noreferrer">
+                  שליחה ב-WhatsApp ללקוח
+                </a>
+              </Button>
+            ) : (
+              <Button type="button" className="w-full" disabled>
+                שליחה ב-WhatsApp ללקוח
+              </Button>
+            )}
+            <Button asChild variant="outline" className="w-full">
+              <a href={mailUrl(email, "טופס בל/6101 מוכן לבדיקה ולחתימה", readyText)}>שליחה באימייל</a>
+            </Button>
+            {mobile ? null : <p className="text-clay">אין מספר נייד ישראלי בתיק, ולכן אי אפשר לפתוח את וואטסאפ.</p>}
+          </div>
+        ) : null}
+        {signed && signedText ? (
+          mobile ? (
+            <Button asChild className="w-full">
+              <a href={whatsAppUrl(mobile, signedText)} target="_blank" rel="noopener noreferrer">
+                שלח אישור חתימה ב-WhatsApp
+              </a>
+            </Button>
+          ) : (
+            <Button type="button" className="w-full" disabled>
+              שלח אישור חתימה ב-WhatsApp
+            </Button>
+          )
         ) : null}
         {note ? <p className="text-clay">{note}</p> : null}
         <div className="flex flex-wrap gap-2">

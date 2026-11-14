@@ -14,6 +14,21 @@ import { ApiError, api } from "@/lib/api";
 import { folderFromWorkspace, processLabel, type FolderTone } from "@/lib/filing";
 import { formatWhen } from "@/lib/utils";
 
+type Bucket = "all" | "preparing" | "awaiting" | "done";
+
+const FILTERS: { id: Bucket; label: string }[] = [
+  { id: "all", label: "הכל" },
+  { id: "preparing", label: "בהכנה במשרד" },
+  { id: "awaiting", label: "ממתין לחתימת לקוח" },
+  { id: "done", label: "נחתם" },
+];
+
+function bucketOf(tone: FolderTone): Exclude<Bucket, "all"> {
+  if (tone === "done") return "done";
+  if (tone === "awaiting") return "awaiting";
+  return "preparing";
+}
+
 type Card = {
   item: CaseRead;
   tone: FolderTone;
@@ -32,6 +47,8 @@ export function Dashboard() {
   const [processKey, setProcessKey] = useState("bl_6101");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+  const [bucket, setBucket] = useState<Bucket>("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +92,14 @@ export function Dashboard() {
       setBusy(false);
     }
   }
+
+  const needle = query.trim().toLowerCase();
+  const visible = cards.filter((card) => {
+    if (bucket !== "all" && bucketOf(card.tone) !== bucket) return false;
+    if (!needle) return true;
+    const haystack = [card.item.client_name, card.item.name, card.item.id].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(needle);
+  });
 
   return (
     <main className="mx-auto flex min-h-screen max-w-6xl flex-col px-5 py-8">
@@ -127,11 +152,39 @@ export function Dashboard() {
 
         <section>
           <h2 className="font-serif text-2xl">הארון</h2>
+          <div className="mt-4 space-y-3">
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="חיפוש לפי שם לקוח או מספרתיק..."
+              aria-label="חיפוש לפי שם לקוח או מספרתיק..."
+            />
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="סינון לפי מצב">
+              {FILTERS.map((item) => {
+                const count = item.id === "all" ? cards.length : cards.filter((card) => bucketOf(card.tone) === item.id).length;
+                const selected = bucket === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    className={`min-h-11 rounded-md border-2 px-3 text-sm font-semibold ${selected ? "border-tide bg-tide text-white" : "border-ink/15 bg-white text-ink"}`}
+                    onClick={() => setBucket(item.id)}
+                  >
+                    {item.label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="mt-4 grid gap-4">
             {cards.length === 0 ? (
               <p className="rounded-lg border-2 border-dashed border-ink/20 bg-white p-5 text-sm text-ink">אין עדיין תיקיות.</p>
+            ) : visible.length === 0 ? (
+              <p className="rounded-lg border-2 border-dashed border-ink/20 bg-white p-5 text-sm text-ink">אין תיקיות בתצוגה הזו.</p>
             ) : (
-              cards.map((card) => <FolderCard key={card.item.id} card={card} />)
+              visible.map((card) => <FolderCard key={card.item.id} card={card} />)
             )}
           </div>
         </section>
