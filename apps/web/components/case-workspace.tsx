@@ -10,6 +10,7 @@ import { FillReportList } from "@/components/fill-report";
 import { PdfCanvas } from "@/components/pdf-preview";
 import { PipelineBanner } from "@/components/pipeline-banner";
 import { ReadingPanel } from "@/components/reading-panel";
+import { SignedChecklist, SignedPdfFrame } from "@/components/signed-review";
 import { SignerLinkCard } from "@/components/signer-link-card";
 import { SigningModal } from "@/components/signing-modal";
 import { StatusPill } from "@/components/status-pill";
@@ -391,9 +392,13 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
               </ul>
             ) : null}
             {workspace.case.download_ready ? (
-              <a className="mt-3 block text-sm font-semibold text-tide underline" href={signedDocumentUrl(caseId)}>
-                הורדת הטופס החתום
-              </a>
+              <div className="mt-4 space-y-3">
+                <SignedChecklist />
+                <a className="block text-sm font-semibold text-tide underline" href={signedDocumentUrl(caseId)}>
+                  הורדת הטופס החתום
+                </a>
+                <SignedPdfFrame src={signedDocumentUrl(caseId)} />
+              </div>
             ) : null}
           </div>
           <AuditCard caseId={caseId} audit={workspace.case.audit} />

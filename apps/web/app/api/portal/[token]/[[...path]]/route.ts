@@ -37,7 +37,10 @@ async function proxy(request: Request, context: { params: Promise<{ token: strin
     const type = upstream.headers.get("content-type");
     if (type) responseHeaders.set("Content-Type", type);
     const disposition = upstream.headers.get("content-disposition");
-    if (disposition) responseHeaders.set("Content-Disposition", disposition);
+    if (disposition) {
+      const inline = new URL(request.url).searchParams.get("view") === "1";
+      responseHeaders.set("Content-Disposition", inline ? disposition.replace(/^attachment/i, "inline") : disposition);
+    }
     responseHeaders.set("Cache-Control", "no-store");
     return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
   } catch {

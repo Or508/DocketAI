@@ -15,9 +15,11 @@ export const FILL_STATUS_LABEL: Record<FillStatus, string> = {
 
 export const PHONE_BOXES_NOTE = "בבל/6101 הטלפון נכנס לתיבות ספרות: בדיוק 10 ספרות, למשל 0501234567, בלי מקף.";
 
+export const PORTAL_CONSENT_HE =
+  "קראתי ובדקתי את הטופס והפרטים המופיעים בו, ואני חותם/ת עליו דיגיטלית.";
+
 const PORTAL_PHRASES: Record<string, string> = {
-  "I have reviewed this form and I am signing it electronically.":
-    "עברתי על הטופס ואני חותם עליו בחתימה אלקטרונית.",
+  "I have reviewed this form and I am signing it electronically.": PORTAL_CONSENT_HE,
 };
 
 export function hebrewPortalCopy(value: string): string {
@@ -57,6 +59,9 @@ export function hebrewDetail(status: number, detail: string): string {
   if (/still need:/i.test(text)) return "עדיין חסרים פרטים אישיים.";
   if (/failed processing/i.test(text)) return "עיבוד התיק נכשל.";
   if (/upload the document bundle/i.test(text)) return "יש להעלות את המסמכים לפני החתימה.";
+  if (/signature is empty|signature image|signature must be a png/i.test(text)) {
+    return "החתימה לא התקבלה. חתמו שוב בתוך המסגרת.";
+  }
   if (/form changed|review it again/i.test(text)) {
     return "המשרד עדכן פרט בטופס בהסכמתך – אנא עבור על הטופס המעודכן לפני החתימה";
   }

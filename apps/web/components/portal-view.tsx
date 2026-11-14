@@ -9,7 +9,7 @@ import { SignatureForm, SigningModal } from "@/components/signing-modal";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
 import { FIELD_LABEL, processLabel } from "@/lib/filing";
-import { hebrewOfficeError, hebrewPortalCopy } from "@/lib/hebrew";
+import { hebrewOfficeError, PORTAL_CONSENT_HE } from "@/lib/hebrew";
 import { portalApi, portalCertificateUrl, portalDownloadUrl, portalPreviewUrl } from "@/lib/portal-api";
 
 const RECORDING = "נרשמים מועד החתימה, כתובת הרשת ופרטי הדפדפן על גבי אישור החתימה.";
@@ -75,13 +75,14 @@ export function PortalViewScreen({ token }: { token: string }) {
         review_digest: view.review_digest,
         consent: true,
       });
-      setView(next);
       setSigning(false);
+      setStep(4);
+      setView(next);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
-        setNotice(REVIEW_AGAIN);
         setSigning(false);
         setStep(2);
+        setNotice(REVIEW_AGAIN);
         await load();
         return;
       }
@@ -113,7 +114,7 @@ export function PortalViewScreen({ token }: { token: string }) {
     <main className="mx-auto flex min-w-0 max-w-3xl flex-col gap-5 overflow-x-clip px-4 py-8">
       <header>
         <p className="text-sm font-semibold text-tide">חתימת לקוח</p>
-        <h1 className="font-serif text-4xl">{processLabel(view.process.name, view.process.name)}</h1>
+        <h1 className="font-serif text-4xl">{processLabel(view.process.name, "בל/6101 – דיווח רב-שנתי ביטוח לאומי")}</h1>
         {view.client_name ? <p className="mt-2 text-lg">{view.client_name}</p> : null}
       </header>
       <nav aria-label="שלבי החתימה" className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
@@ -180,7 +181,7 @@ export function PortalViewScreen({ token }: { token: string }) {
         <section className="rounded-lg border-2 border-ink/15 bg-white p-4 shadow-card">
           <h2 className="font-serif text-2xl">חתימה דיגיטלית</h2>
           <div className="mt-4 md:hidden">
-            <SignatureForm busy={busy} consentLabel={hebrewPortalCopy(view.consent_text)} notice={RECORDING} onSign={sign} />
+            <SignatureForm busy={busy} consentLabel={PORTAL_CONSENT_HE} notice={RECORDING} alert={notice} onSign={sign} />
           </div>
           <div className="mt-4 hidden md:block">
             <Button type="button" className="min-h-11 w-full" onClick={() => setSigning(true)} disabled={busy}>
@@ -189,8 +190,9 @@ export function PortalViewScreen({ token }: { token: string }) {
             <SigningModal
               open={signing}
               busy={busy}
-              consentLabel={hebrewPortalCopy(view.consent_text)}
+              consentLabel={PORTAL_CONSENT_HE}
               notice={RECORDING}
+              alert={notice}
               onOpenChange={setSigning}
               onSign={sign}
             />

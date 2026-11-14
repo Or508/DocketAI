@@ -3,6 +3,7 @@
 import type { PortalSeal } from "@docketai/shared-types";
 import { useState } from "react";
 
+import { SignedChecklist, SignedPdfFrame } from "@/components/signed-review";
 import { Button } from "@/components/ui/button";
 
 export function IntegrityPanel({
@@ -27,7 +28,7 @@ export function IntegrityPanel({
     <section className="rounded-lg border border-line bg-white/80 shadow-card">
       <div className="border-b border-line px-4 py-4">
         <p className="text-sm font-semibold text-tide">אישור והורדה</p>
-        <h2 className="font-serif text-2xl">טביעת אצבע של הקובץ</h2>
+        <h2 className="font-serif text-2xl">אישור חתימה</h2>
       </div>
       <div className="space-y-4 px-4 py-4">
         <p className="text-sm leading-6">נחתם ב־{signed}, שעון ישראל.</p>
@@ -61,6 +62,7 @@ export function IntegrityPanel({
           </p>
         ) : null}
         <p className="text-sm leading-6">טביעת האצבע של הקובץ שהורדתם צריכה להיות זהה.</p>
+        <SignedChecklist />
         <div className="flex flex-col gap-2">
           <Button asChild className="min-h-11 w-full">
             <a href={signedPdfUrl}>הורדת הטופס החתום</a>
@@ -69,6 +71,7 @@ export function IntegrityPanel({
             <a href={certificateUrl}>הורדת אישור החתימה</a>
           </Button>
         </div>
+        <SignedPdfFrame src={signedPdfUrl} />
         {downloadExpiresAt ? (
           <p className="text-sm text-mist">
             ההורדה פתוחה עד{" "}
