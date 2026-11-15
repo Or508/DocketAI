@@ -17,7 +17,7 @@ import fitz
 
 from fastapi import UploadFile
 from pydantic import TypeAdapter
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -1153,6 +1153,39 @@ class CaseService:
                 single.close()
         finally:
             document.close()
+
+    async def delete_case(self, case_id: uuid.UUID) -> None:
+        """Remove an unsigned case with its files, links and history.
+
+        A signed case is the record of a signature and stays until it is reopened.
+        """
+        case = await self._locked_case(case_id)
+        if case is None:
+            raise NotFoundError("Case not found.")
+        if case.status == CaseStatus.SIGNED:
+            await self.session.rollback()
+            raise ConflictError("A signed case is kept for the record. Reopen it before deleting it.")
+        if any(item.status == DocumentStatus.PROCESSING and not _is_stalled(item) for item in case.documents):
+            await self.session.rollback()
+            raise ConflictError("A file on this case is still being read. Try again in a moment.")
+        keys = {document.storage_path for document in case.documents}
+        keys.update(key for key in (case.output_path, case.content_path) if key)
+        # Packets a reopen or an edit superseded are kept in storage; the audit rows say where.
+        prefix = f"org/{case.organization_id}/cases/{case.id}/"
+        rows = (await self.session.scalars(select(AuditLog).where(AuditLog.case_id == case.id))).all()
+        for row in rows:
+            for recorded in (row.previous_value, row.new_value):
+                for name in ("output_path", "content_path"):
+                    key = (recorded or {}).get(name)
+                    if isinstance(key, str) and key.startswith(prefix):
+                        keys.add(key)
+        documents = len(case.documents)
+        await self.session.execute(delete(AuditLog).where(AuditLog.case_id == case.id))
+        await self.session.execute(delete(SigningLink).where(SigningLink.case_id == case.id))
+        await self.session.delete(case)
+        await self.session.commit()
+        await self._delete_objects(sorted(keys))
+        logger.info("Case %s deleted by %s with %d files", case_id, self.scope.actor, documents)
 
     async def load_default_form(self, case_id: uuid.UUID) -> CaseWorkspace:
         """Put the server's blank BL/6101 on the case as its form, in place of any form it has."""

@@ -45,7 +45,10 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 def _public(path: str) -> bool:
-    return path in {"/health", "/auth/login"} or path == "/portal" or path.startswith("/portal/") or path in _DOCS
+    if path in {"/health", "/auth/login"} or path in _DOCS:
+        return True
+    # The signer's portal is opened by a link; the seal check is open to anyone holding a code or the file.
+    return path == "/portal" or path.startswith(("/portal/", "/verify/"))
 
 
 def test_office_routes_require_a_session(client: TestClient) -> None:

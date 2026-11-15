@@ -26,6 +26,7 @@ export function FilingSlots({
   rereading,
   onLoadBlank,
   loadingBlank,
+  onView,
 }: {
   workspace: CaseWorkspace;
   intake: IntakeSummary | null;
@@ -38,6 +39,7 @@ export function FilingSlots({
   rereading: boolean;
   onLoadBlank?: () => Promise<void>;
   loadingBlank?: boolean;
+  onView: (file: DrawerFile) => void;
 }) {
   const [armed, setArmed] = useState<string | null>(null);
   const forms = intake?.forms.filter((item) => item.role === "form") ?? [];
@@ -116,6 +118,7 @@ export function FilingSlots({
           onMove={onMove}
           onLoadBlank={onLoadBlank}
           loadingBlank={loadingBlank}
+          onView={onView}
         />
         {sources.map((document) => {
           const files = sourceFiles.get(document.type_key) ?? [];
@@ -134,6 +137,7 @@ export function FilingSlots({
               onUpload={onUpload}
               onRemove={onRemove}
               onMove={onMove}
+              onView={onView}
             />
           );
         })}
@@ -154,6 +158,7 @@ export function FilingSlots({
                   choices={choices}
                   onRemove={onRemove}
                   onMove={onMove}
+                  onView={onView}
                 />
               ))}
             </ul>
@@ -187,6 +192,7 @@ function Slot({
   onMove,
   onLoadBlank,
   loadingBlank,
+  onView,
 }: {
   slot: string;
   title: string;
@@ -202,6 +208,7 @@ function Slot({
   onMove: (documentId: string, fromSlot: string, toSlot: string) => Promise<void>;
   onLoadBlank?: () => Promise<void>;
   loadingBlank?: boolean;
+  onView: (file: DrawerFile) => void;
 }) {
   const [over, setOver] = useState(false);
   const ready = files.length > 0;
@@ -260,7 +267,7 @@ function Slot({
       {files.length ? (
         <ul className="mt-3 grid gap-2">
           {files.map((file) => (
-            <FileRow key={file.id} file={file} fromSlot={slot} choices={choices} onRemove={onRemove} onMove={onMove} />
+            <FileRow key={file.id} file={file} fromSlot={slot} choices={choices} onRemove={onRemove} onMove={onMove} onView={onView} />
           ))}
         </ul>
       ) : null}
@@ -281,18 +288,27 @@ function FileRow({
   choices,
   onRemove,
   onMove,
+  onView,
 }: {
   file: DrawerFile;
   fromSlot: string;
   choices: DrawerChoice[];
   onRemove: (slot: string, documentId: string) => Promise<void>;
   onMove: (documentId: string, fromSlot: string, toSlot: string) => Promise<void>;
+  onView: (file: DrawerFile) => void;
 }) {
   return (
     <li className="flex flex-wrap items-center gap-2 rounded-md border-2 border-ink/15 bg-white px-3 py-2">
       <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink" title={file.name}>
         {file.name}
       </span>
+      <button
+        type="button"
+        className="inline-flex h-9 items-center rounded-md border-2 border-tide px-2 text-xs font-bold text-tide transition duration-200 hover:-translate-y-0.5"
+        onClick={() => onView(file)}
+      >
+        צפה בקובץ 👁
+      </button>
       <button
         type="button"
         className="inline-flex h-9 items-center rounded-md border-2 border-clay px-2 text-xs font-bold text-clay transition duration-200 hover:-translate-y-0.5"

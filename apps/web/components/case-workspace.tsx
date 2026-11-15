@@ -13,6 +13,7 @@ import { PipelineBanner } from "@/components/pipeline-banner";
 import { ReadingPanel } from "@/components/reading-panel";
 import { SignedChecklist, SignedPdfFrame } from "@/components/signed-review";
 import { SignerLinkCard } from "@/components/signer-link-card";
+import { SourceCompare } from "@/components/source-compare";
 import { SigningModal } from "@/components/signing-modal";
 import { StatusPill } from "@/components/status-pill";
 import { Wordmark } from "@/components/wordmark";
@@ -20,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { OfficeBar } from "@/components/office-bar";
 import { ApiError, api, downloadCaseArchive, filledFormUrl, signedDocumentUrl } from "@/lib/api";
 import { archiveFilename } from "@/lib/dispatch";
-import { folderFromWorkspace, processLabel } from "@/lib/filing";
+import { FIELD_LABEL, folderFromWorkspace, processLabel } from "@/lib/filing";
 import { hebrewDetail, hebrewOfficeError, hebrewUploadReason } from "@/lib/hebrew";
 
 export function CaseWorkspaceView({ caseId }: { caseId: string }) {
@@ -34,6 +35,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
   const [previewLarge, setPreviewLarge] = useState(false);
   const [rereading, setRereading] = useState(false);
   const [loadingForm, setLoadingForm] = useState(false);
+  const [sourceFile, setSourceFile] = useState<{ id: string; name: string } | null>(null);
   const [watch, setWatch] = useState(false);
   const [slotErrors, setSlotErrors] = useState<Record<string, string>>({});
   const [pendingSlots, setPendingSlots] = useState<string[]>([]);
@@ -383,6 +385,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
           rereading={rereading}
           onLoadBlank={workspace.process.key === "bl_6101" && workspace.case.status !== "signed" ? loadBlankForm : undefined}
           loadingBlank={loadingForm}
+          onView={setSourceFile}
         />
         <FieldVerification
           processKey={workspace.process.key}
@@ -475,6 +478,19 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
         <ActivityTimeline caseId={caseId} />
         <ReadingPanel workspace={workspace} />
       </div>
+
+      {sourceFile ? (
+        <SourceCompare
+          caseId={caseId}
+          file={sourceFile}
+          fields={workspace.process.required_fields.map((field) => ({
+            key: field.key,
+            label: FIELD_LABEL[field.key] ?? field.label_he ?? field.label,
+            value: workspace.field_values[field.key] ?? "",
+          }))}
+          onClose={() => setSourceFile(null)}
+        />
+      ) : null}
 
       {previewLarge && form ? (
         <div

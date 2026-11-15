@@ -45,6 +45,12 @@ async def get_case(case_id: UUID, service: CaseService = Depends(get_case_servic
     return await service.workspace(case_id)
 
 
+@router.delete("/{case_id}", status_code=204)
+async def delete_case(case_id: UUID, service: CaseService = Depends(get_case_service)) -> Response:
+    await service.delete_case(case_id)
+    return Response(status_code=204)
+
+
 @router.get("/{case_id}/status", response_model=GapReport)
 async def case_status(case_id: UUID, service: CaseService = Depends(get_case_service)) -> GapReport:
     return await service.gap(case_id)

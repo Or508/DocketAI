@@ -71,6 +71,7 @@ def test_another_organization_gets_404_and_changes_nothing(client: TestClient, t
     headers = {"Authorization": f"Bearer {other['token']}"}
     calls = [
         ("GET", f"/cases/{case_id}", None, None),
+        ("DELETE", f"/cases/{case_id}", None, None),
         ("GET", f"/cases/{case_id}/status", None, None),
         ("GET", f"/cases/{case_id}/events", None, None),
         ("POST", f"/cases/{case_id}/chat", {"message": "hello"}, None),

@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, Path, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import public_scope
 from app.db.session import get_session
+from app.domain.case_scope import CaseScope
 from app.schemas.verify import SealVerification
 from app.services.verify_service import verify_file, verify_seal
 
@@ -17,9 +19,10 @@ async def verify_by_hash(
     response: Response,
     sha256: str = Path(pattern=_SHA256),
     session: AsyncSession = Depends(get_session),
+    scope: CaseScope = Depends(public_scope),
 ) -> SealVerification:
     response.headers["Cache-Control"] = "no-store"
-    return await verify_file(session, sha256)
+    return await verify_file(session, scope, sha256)
 
 
 @router.get("/{verification_id}", response_model=SealVerification)
@@ -28,6 +31,7 @@ async def verify(
     response: Response,
     sha256: str | None = Query(default=None, pattern=_SHA256),
     session: AsyncSession = Depends(get_session),
+    scope: CaseScope = Depends(public_scope),
 ) -> SealVerification:
     response.headers["Cache-Control"] = "no-store"
-    return await verify_seal(session, verification_id, sha256)
+    return await verify_seal(session, scope, verification_id, sha256)

@@ -59,6 +59,11 @@ def get_portal_service(
     return PortalService(session, container, CaseScope.system())
 
 
+def public_scope() -> CaseScope:
+    """For the public seal check only: it finds a case by its verification code, not by office."""
+    return CaseScope.system()
+
+
 def bearer_token(request: Request) -> str:
     header = request.headers.get("authorization") or ""
     scheme, _, token = header.partition(" ")

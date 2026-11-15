@@ -3,6 +3,7 @@
 import type { SigningLinkRead } from "@docketai/shared-types";
 import { useCallback, useEffect, useState } from "react";
 
+import { SigningQr } from "@/components/signing-qr";
 import { Button } from "@/components/ui/button";
 import { ApiError, api } from "@/lib/api";
 import { israeliMobile, mailUrl, signedMessage, signingMessage, whatsAppUrl } from "@/lib/dispatch";
@@ -161,8 +162,9 @@ export function SignerLinkCard({
             </div>
           </div>
         ) : null}
-        {open ? (
-          <div className="space-y-2">
+        {open && signingUrl ? (
+          <div className="flex flex-wrap items-start gap-4">
+            <div className="min-w-[12rem] flex-1 space-y-2">
             {mobile ? (
               <Button asChild className="w-full">
                 <a href={whatsAppUrl(mobile, readyText)} target="_blank" rel="noopener noreferrer">
@@ -178,6 +180,8 @@ export function SignerLinkCard({
               <a href={mailUrl(email, "טופס בל/6101 מוכן לבדיקה ולחתימה", readyText)}>שליחה באימייל</a>
             </Button>
             {mobile ? null : <p className="text-clay">אין מספר נייד ישראלי בתיק, ולכן אי אפשר לפתוח את וואטסאפ.</p>}
+            </div>
+            <SigningQr value={signingUrl} />
           </div>
         ) : null}
         {signed && signedText ? (

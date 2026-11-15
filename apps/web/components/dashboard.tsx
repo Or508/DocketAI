@@ -10,8 +10,10 @@ import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OfficeBar } from "@/components/office-bar";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, detailFrom, downloadCaseArchive } from "@/lib/api";
+import { archiveFilename } from "@/lib/dispatch";
 import { folderFromWorkspace, processLabel, type FolderTone } from "@/lib/filing";
+import { hebrewOfficeError } from "@/lib/hebrew";
 import { formatWhen } from "@/lib/utils";
 
 type Bucket = "all" | "preparing" | "awaiting" | "done";
@@ -49,6 +51,8 @@ export function Dashboard() {
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [bucket, setBucket] = useState<Bucket>("all");
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actingId, setActingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +97,46 @@ export function Dashboard() {
     }
   }
 
+  async function downloadArchive(card: Card) {
+    setActingId(card.item.id);
+    setActionError(null);
+    try {
+      await downloadCaseArchive(card.item.id, archiveFilename(card.item.client_name || card.item.name));
+    } catch (reason) {
+      setActionError(hebrewOfficeError(reason));
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  async function deleteDraft(card: Card) {
+    const label = card.item.client_name || card.item.name;
+    if (!window.confirm(`למחוק את תיק הטיוטה של ${label}? התיק והקבצים שבו יימחקו.`)) return;
+    setActingId(card.item.id);
+    setActionError(null);
+    try {
+      const response = await fetch(`/api/cases/${card.item.id}`, { method: "DELETE" });
+      if (response.status === 401) {
+        window.location.assign(`/login?next=${encodeURIComponent("/cases")}`);
+        return;
+      }
+      if (!response.ok && response.status !== 204) {
+        let message = response.statusText;
+        try {
+          message = detailFrom(await response.json());
+        } catch {
+          message = response.statusText;
+        }
+        throw new ApiError(message || "Request failed", response.status);
+      }
+      setCards((current) => current.filter((item) => item.item.id !== card.item.id));
+    } catch (reason) {
+      setActionError(hebrewOfficeError(reason));
+    } finally {
+      setActingId(null);
+    }
+  }
+
   const needle = query.trim().toLowerCase();
   const visible = cards.filter((card) => {
     if (bucket !== "all" && bucketOf(card.tone) !== bucket) return false;
@@ -111,6 +155,14 @@ export function Dashboard() {
           </div>
           <p className="mt-3 text-sm font-semibold tracking-wide text-tide">ארון תיוק ובקרת מסמכים</p>
           <h1 className="mt-1 font-serif text-4xl text-ink">תיקיות לקוח</h1>
+          <nav className="mt-3 flex flex-wrap gap-4 text-sm font-semibold">
+            <a className="text-tide underline" href="/templates">
+              קטלוג טפסים (/templates)
+            </a>
+            <a className="text-tide underline" href="/verify">
+              אימות חותם ציבורי (/verify)
+            </a>
+          </nav>
         </div>
       </header>
 
@@ -152,6 +204,11 @@ export function Dashboard() {
 
         <section>
           <h2 className="font-serif text-2xl">הארון</h2>
+          {actionError ? (
+            <p className="mt-3 text-sm font-medium text-clay" role="alert">
+              {actionError}
+            </p>
+          ) : null}
           <div className="mt-4 space-y-3">
             <Input
               value={query}
@@ -184,7 +241,15 @@ export function Dashboard() {
             ) : visible.length === 0 ? (
               <p className="rounded-lg border-2 border-dashed border-ink/20 bg-white p-5 text-sm text-ink">אין תיקיות בתצוגה הזו.</p>
             ) : (
-              visible.map((card) => <FolderCard key={card.item.id} card={card} />)
+              visible.map((card) => (
+                <FolderCard
+                  key={card.item.id}
+                  card={card}
+                  busy={actingId === card.item.id}
+                  onDownload={() => void downloadArchive(card)}
+                  onDelete={card.tone === "done" || card.tone === "awaiting" ? undefined : () => void deleteDraft(card)}
+                />
+              ))
             )}
           </div>
         </section>
@@ -193,13 +258,24 @@ export function Dashboard() {
   );
 }
 
-function FolderCard({ card }: { card: Card }) {
+function FolderCard({
+  card,
+  busy,
+  onDownload,
+  onDelete,
+}: {
+  card: Card;
+  busy: boolean;
+  onDownload: () => void;
+  onDelete?: () => void;
+}) {
   const docPct = card.docsTotal ? Math.round((card.docsDone / card.docsTotal) * 100) : 0;
   const fieldPct = card.fieldsTotal ? Math.round((card.fieldsDone / card.fieldsTotal) * 100) : 0;
   return (
+    <article className="overflow-hidden rounded-lg border-2 border-ink/15 bg-white shadow-card transition duration-200 hover:-translate-y-0.5 hover:border-tide hover:shadow-lg">
     <a
       href={`/cases/${card.item.id}`}
-      className="block rounded-lg border-2 border-ink/15 bg-white p-5 shadow-card transition duration-200 hover:-translate-y-0.5 hover:border-tide hover:shadow-lg"
+      className="block p-5"
     >
       <span className="flex flex-wrap items-start justify-between gap-3">
         <span>
@@ -215,6 +291,27 @@ function FolderCard({ card }: { card: Card }) {
         <Meter label="פרטים אישיים" done={card.fieldsDone} total={card.fieldsTotal} pct={fieldPct} />
       </span>
     </a>
+    <div className="flex flex-wrap gap-2 border-t-2 border-ink/10 px-5 py-3">
+      <button
+        type="button"
+        className="inline-flex h-10 items-center rounded-md border-2 border-ink/25 bg-white px-3 text-sm font-semibold text-ink"
+        disabled={busy}
+        onClick={onDownload}
+      >
+        הורד ZIP
+      </button>
+      {onDelete ? (
+        <button
+          type="button"
+          className="inline-flex h-10 items-center rounded-md border-2 border-clay px-3 text-sm font-semibold text-clay"
+          disabled={busy}
+          onClick={onDelete}
+        >
+          מחק תיק טיוטה
+        </button>
+      ) : null}
+    </div>
+    </article>
   );
 }
 

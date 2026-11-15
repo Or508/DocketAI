@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import NotFoundError
 from app.core.time import utcnow
+from app.domain.case_scope import CaseScope, case_query
 from app.domain.enums import AuditAction, CaseStatus
 from app.domain.signing_links import as_utc
 from app.models.audit_log import AuditLog
@@ -32,7 +33,7 @@ def mask_name(name: str | None) -> str:
     return f"{parts[0]} {parts[-1][0]}."
 
 
-async def verify_seal(session: AsyncSession, raw_code: str, sha256: str | None) -> SealVerification:
+async def verify_seal(session: AsyncSession, scope: CaseScope, raw_code: str, sha256: str | None) -> SealVerification:
     code = normalize_code(raw_code)
     if code is None:
         raise NotFoundError(_NOT_FOUND)
@@ -46,10 +47,10 @@ async def verify_seal(session: AsyncSession, raw_code: str, sha256: str | None) 
         .order_by(AuditLog.created_at.desc())
         .limit(1)
     )
-    return await _describe(session, record, sha256)
+    return await _describe(session, scope, record, sha256)
 
 
-async def verify_file(session: AsyncSession, sha256: str) -> SealVerification:
+async def verify_file(session: AsyncSession, scope: CaseScope, sha256: str) -> SealVerification:
     """Find the seal a signed PDF belongs to from the file's own hash."""
     digest = sha256.strip().lower()
     record = await session.scalar(
@@ -61,17 +62,19 @@ async def verify_file(session: AsyncSession, sha256: str) -> SealVerification:
         .order_by(AuditLog.created_at.desc())
         .limit(1)
     )
-    return await _describe(session, record, digest)
+    return await _describe(session, scope, record, digest)
 
 
-async def _describe(session: AsyncSession, record: AuditLog | None, sha256: str | None) -> SealVerification:
+async def _describe(
+    session: AsyncSession, scope: CaseScope, record: AuditLog | None, sha256: str | None
+) -> SealVerification:
     recorded = (record.new_value or {}) if record is not None else {}
     digest = str(recorded.get("file_sha256") or "").lower()
     code = normalize_code(str(recorded.get("signer_verification_id") or ""))
     if record is None or not digest or code is None:
         raise NotFoundError(_NOT_FOUND)
     case = await session.scalar(
-        select(Case).where(Case.id == record.case_id).options(selectinload(Case.process_definition))
+        case_query(scope).where(Case.id == record.case_id).options(selectinload(Case.process_definition))
     )
     if case is None:
         raise NotFoundError(_NOT_FOUND)
