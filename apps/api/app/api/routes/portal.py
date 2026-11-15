@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
@@ -58,6 +58,22 @@ async def portal_fields(
     await service.cases.set_field(case.id, payload, reject_if_signed=True, source="client")
     stored = await service.cases._get_case(case.id)
     current = await service.session.get(SigningLink, link.id)
+    assert current is not None
+    return service.view(current, stored)
+
+
+@router.post("/documents", response_model=PortalView)
+async def portal_documents(
+    file: UploadFile = File(...),
+    document_type: str = Form(..., max_length=64),
+    replace_existing: bool = Form(default=True),
+    opened: tuple[SigningLink, Case, PortalService] = Depends(_open_link),
+) -> PortalView:
+    link, case, service = opened
+    link_id, case_id = link.id, case.id
+    await service.cases.add_client_document(case_id, file, document_type, replace_existing)
+    stored = await service.cases._get_case(case_id)
+    current = await service.session.get(SigningLink, link_id)
     assert current is not None
     return service.view(current, stored)
 

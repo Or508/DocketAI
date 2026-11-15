@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 const ALLOWED: Record<string, Set<string>> = {
   GET: new Set(["", "preview", "signed-document", "certificate"]),
-  POST: new Set(["fields", "chat/stream", "sign"]),
+  POST: new Set(["fields", "chat/stream", "sign", "documents"]),
 };
 
 async function proxy(request: Request, context: { params: Promise<{ token: string; path?: string[] }> }) {
@@ -19,6 +19,7 @@ async function proxy(request: Request, context: { params: Promise<{ token: strin
   try {
     const headers = new Headers();
     headers.set("Authorization", `Bearer ${token}`);
+    headers.set("X-Signing-Token", token);
     headers.set("X-Portal-Client-Ip", rightmostForwarded(request.headers.get("x-forwarded-for")));
     headers.set("X-Portal-User-Agent", request.headers.get("user-agent") ?? "");
     const contentType = request.headers.get("content-type");

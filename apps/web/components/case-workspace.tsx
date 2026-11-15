@@ -3,6 +3,7 @@
 import type { CaseProgressEvent, CaseWorkspace, IntakeSummary } from "@docketai/shared-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { ActivityTimeline } from "@/components/activity-timeline";
 import { AuditCard } from "@/components/audit-card";
 import { FieldVerification } from "@/components/field-verification";
 import { FilingSlots } from "@/components/filing-slots";
@@ -32,6 +33,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
   const [previewOpen, setPreviewOpen] = useState(true);
   const [previewLarge, setPreviewLarge] = useState(false);
   const [rereading, setRereading] = useState(false);
+  const [loadingForm, setLoadingForm] = useState(false);
   const [watch, setWatch] = useState(false);
   const [slotErrors, setSlotErrors] = useState<Record<string, string>>({});
   const [pendingSlots, setPendingSlots] = useState<string[]>([]);
@@ -304,6 +306,20 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
     }
   }
 
+  async function loadBlankForm() {
+    setLoadingForm(true);
+    setError(null);
+    try {
+      await api.loadDefaultForm(caseId);
+      setNotice("טופס בל/6101 נטען מהמערכת.");
+      await refresh();
+    } catch (reason) {
+      setError(hebrewOfficeError(reason));
+    } finally {
+      setLoadingForm(false);
+    }
+  }
+
   async function reopenCase() {
     const confirmed = window.confirm(
       "פתיחת התיק מחדש משחררת את הפרטים לתיקון. החתימה הקיימת מתבטלת, והלקוח יצטרך לחתום שוב על קישור חדש. להמשיך?",
@@ -365,6 +381,8 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
           onMove={moveDocument}
           onReread={rereadDocuments}
           rereading={rereading}
+          onLoadBlank={workspace.process.key === "bl_6101" && workspace.case.status !== "signed" ? loadBlankForm : undefined}
+          loadingBlank={loadingForm}
         />
         <FieldVerification
           processKey={workspace.process.key}
@@ -453,7 +471,8 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
           <AuditCard caseId={caseId} audit={workspace.case.audit} />
         </div>
       </div>
-      <div className="mt-5">
+      <div className="mt-5 grid gap-5">
+        <ActivityTimeline caseId={caseId} />
         <ReadingPanel workspace={workspace} />
       </div>
 

@@ -14,6 +14,7 @@ from app.schemas.case import CaseCreate, CaseRead
 from app.schemas.chat import ChatRequest, FieldUpdateRequest
 from app.schemas.forms import DocumentRoleRead, DocumentRoleUpdate, FillReport, IntakeSummary
 from app.schemas.gap import FillAndSignRequest, GapReport, ManualClassifyRequest
+from app.schemas.timeline import TimelineEvent
 from app.schemas.workspace import CaseWorkspace, UploadResult
 from app.services.case_service import CaseService
 from app.services.chat_stream import iter_chat_stream
@@ -284,3 +285,19 @@ async def reopen_case(
     service: CaseService = Depends(get_case_service),
 ) -> CaseWorkspace:
     return await service.reopen(case_id)
+
+
+@router.post("/{case_id}/load-default-form", response_model=CaseWorkspace)
+async def load_default_form(
+    case_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> CaseWorkspace:
+    return await service.load_default_form(case_id)
+
+
+@router.get("/{case_id}/timeline", response_model=list[TimelineEvent])
+async def case_timeline(
+    case_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> list[TimelineEvent]:
+    return await service.timeline(case_id)

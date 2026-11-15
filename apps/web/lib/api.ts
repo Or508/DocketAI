@@ -117,6 +117,8 @@ export const api = {
   revokeSigningLink: (caseId: string) =>
     request<void>(`/cases/${caseId}/signing-link`, { method: "DELETE" }),
   reopenCase: (caseId: string) => request<CaseWorkspace>(`/cases/${caseId}/reopen`, { method: "POST" }),
+  loadDefaultForm: (caseId: string) => request<CaseWorkspace>(`/cases/${caseId}/load-default-form`, { method: "POST" }),
+  timeline: (caseId: string) => request<unknown>(`/cases/${caseId}/timeline`),
   intake: (caseId: string) => request<IntakeSummary>(`/cases/${caseId}/intake`),
   fillReport: (caseId: string, documentId: string) =>
     request<FillReport>(`/cases/${caseId}/documents/${documentId}/fill-report`),

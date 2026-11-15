@@ -24,6 +24,8 @@ export function FilingSlots({
   onMove,
   onReread,
   rereading,
+  onLoadBlank,
+  loadingBlank,
 }: {
   workspace: CaseWorkspace;
   intake: IntakeSummary | null;
@@ -34,6 +36,8 @@ export function FilingSlots({
   onMove: (documentId: string, fromSlot: string, toSlot: string) => Promise<void>;
   onReread: () => Promise<void>;
   rereading: boolean;
+  onLoadBlank?: () => Promise<void>;
+  loadingBlank?: boolean;
 }) {
   const [armed, setArmed] = useState<string | null>(null);
   const forms = intake?.forms.filter((item) => item.role === "form") ?? [];
@@ -110,6 +114,8 @@ export function FilingSlots({
           onUpload={onUpload}
           onRemove={onRemove}
           onMove={onMove}
+          onLoadBlank={onLoadBlank}
+          loadingBlank={loadingBlank}
         />
         {sources.map((document) => {
           const files = sourceFiles.get(document.type_key) ?? [];
@@ -179,6 +185,8 @@ function Slot({
   onUpload,
   onRemove,
   onMove,
+  onLoadBlank,
+  loadingBlank,
 }: {
   slot: string;
   title: string;
@@ -192,6 +200,8 @@ function Slot({
   onUpload: (slot: string, file: File, replace?: boolean) => Promise<void>;
   onRemove: (slot: string, documentId: string) => Promise<void>;
   onMove: (documentId: string, fromSlot: string, toSlot: string) => Promise<void>;
+  onLoadBlank?: () => Promise<void>;
+  loadingBlank?: boolean;
 }) {
   const [over, setOver] = useState(false);
   const ready = files.length > 0;
@@ -233,8 +243,18 @@ function Slot({
           <p className={`text-sm font-bold ${ready ? "text-[#0d4a2e]" : "text-[#5c3b08]"}`}>{status}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {onLoadBlank && !ready ? (
+            <Button type="button" disabled={loadingBlank} onClick={() => void onLoadBlank()}>
+              {loadingBlank ? "טוען את הטופס…" : "טען טופס בל/6101 אוטומטית"}
+            </Button>
+          ) : null}
           <FileButton label={ready ? "החלף קובץ במגירה" : "העלאה למגירה"} onFile={(file) => onUpload(slot, file, ready)} />
           {ready ? <FileButton label="+ הוסף קובץ נוסף" quiet onFile={(file) => onUpload(slot, file, false)} /> : null}
+          {onLoadBlank && ready ? (
+            <Button type="button" variant="outline" disabled={loadingBlank} onClick={() => void onLoadBlank()}>
+              {loadingBlank ? "טוען את הטופס…" : "טען טופס בל/6101 אוטומטית"}
+            </Button>
+          ) : null}
         </div>
       </div>
       {files.length ? (

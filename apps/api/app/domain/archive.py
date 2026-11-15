@@ -29,6 +29,7 @@ _SAFE_KEYS = frozenset(
         "form_pdf",
         "form_pdf_sha256",
         "link_id",
+        "needs_human_review",
         "reader",
         "revoke_reason",
         "revoked_links",
@@ -79,6 +80,35 @@ def audit_entry(
     if notes and action in _SYSTEM_NOTE_ACTIONS:
         entry["notes"] = notes
     return entry
+
+
+def timeline_metadata(previous_value: object, new_value: object) -> dict[str, Any]:
+    """One flat record per event: the safe details, under the names the timeline shows.
+
+    What an event set comes from its new value. A signature or file it replaced or
+    removed is named as superseded, so the two are never confused.
+    """
+    before = safe_details(previous_value) or {}
+    after = safe_details(new_value) or {}
+    metadata: dict[str, Any] = {**before, **after}
+    if after.get("signer_verification_id"):
+        metadata["verification_id"] = after["signer_verification_id"]
+    if before.get("signer_verification_id") and "superseded_verification_id" not in metadata:
+        metadata["superseded_verification_id"] = before["signer_verification_id"]
+    if before.get("file_sha256") and "superseded_signed_pdf_sha256" not in metadata:
+        metadata["superseded_signed_pdf_sha256"] = before["file_sha256"]
+    for key in ("signer_verification_id", "file_sha256", "content_sha256"):
+        if key in before and key not in after:
+            metadata.pop(key, None)
+    digest = (
+        after.get("file_sha256")
+        or after.get("content_hash")
+        or after.get("form_pdf_sha256")
+        or before.get("content_hash")
+    )
+    if digest:
+        metadata["sha256"] = digest
+    return metadata
 
 
 def source_name(label: str, original_filename: str, taken: set[str]) -> str:

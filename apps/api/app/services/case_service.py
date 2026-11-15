@@ -37,6 +37,7 @@ from app.domain.archive import (
     SIGNED_FORM_NAME,
     audit_entry,
     source_name,
+    timeline_metadata,
 )
 from app.domain.certificate import (
     OFFICE_CONSENT_TEXT,
@@ -87,6 +88,7 @@ from app.schemas.gap import (
     UnboundAnchor,
 )
 from app.schemas.process import DocumentTypeSpec, FieldSource, FieldSpec, ProcessRead, ValueSource
+from app.schemas.timeline import TimelineEvent
 from app.schemas.workspace import CaseWorkspace, FileRejection, UploadResult
 from app.services.chat_collector import OPENING, ChatTurn
 from app.services.field_validator import missing_required_fields, validate_field
@@ -103,6 +105,18 @@ logger = logging.getLogger(__name__)
 class ChatStart:
     turn: ChatTurn
     stamp: str
+
+_DEFAULT_FORM_PROCESS = "bl_6101"
+_DEFAULT_FORM_FILENAME = "bl_6101_official.pdf"
+_CLIENT_DOCUMENT_CAP = 40
+# The names the signer's page uses for a drawer, and the catalog's own.
+CLIENT_DOCUMENT_TYPES = {
+    "id_card": "id_copy",
+    "id_copy": "id_copy",
+    "address_proof": "proof_of_address",
+    "proof_of_address": "proof_of_address",
+    "bank_confirmation": "bank_confirmation",
+}
 
 _DOCUMENT_ADAPTER = TypeAdapter(list[DocumentTypeSpec])
 _FIELD_ADAPTER = TypeAdapter(list[FieldSpec])
@@ -343,9 +357,9 @@ class CaseService:
             except ConflictError as exc:
                 logger.info("Role %s not applied to document %s: %s", chosen_role, document_id, exc.message)
 
-    async def run_ingestion(self, case_id: uuid.UUID) -> None:
+    async def run_ingestion(self, case_id: uuid.UUID, *, actor: str = "office") -> None:
         try:
-            await self._ingest(case_id)
+            await self._ingest(case_id, actor)
         except Exception:
             logger.exception("Ingestion failed for case %s", case_id)
             try:
@@ -354,7 +368,7 @@ class CaseService:
                 logger.exception("Could not record the pipeline failure for case %s", case_id)
             raise
 
-    async def _ingest(self, case_id: uuid.UUID) -> None:
+    async def _ingest(self, case_id: uuid.UUID, actor: str = "office") -> None:
         case = await self._get_case(case_id)
         required, optional = _document_specs(case.process_definition)
         catalog = required + optional
@@ -428,7 +442,7 @@ class CaseService:
                         case_id=case_id,
                         document_id=document.id,
                         action=AuditAction.MANUAL_CLASSIFY,
-                        actor="office",
+                        actor=actor,
                         new_value={"document_type": chosen, "confidence": 1.0, "at_upload": True},
                     )
                 )
@@ -1139,6 +1153,114 @@ class CaseService:
                 single.close()
         finally:
             document.close()
+
+    async def load_default_form(self, case_id: uuid.UUID) -> CaseWorkspace:
+        """Put the server's blank BL/6101 on the case as its form, in place of any form it has."""
+        case = await self._get_case(case_id)
+        if case.status == CaseStatus.SIGNED:
+            raise ConflictError("This case is already signed.")
+        if case.process_definition.key != _DEFAULT_FORM_PROCESS:
+            raise ConflictError("Only a BL/6101 case has a form to load from the server.")
+        template = self.container.settings.resolved_bl_6101_template
+        if not template.is_file():
+            raise NotFoundError(
+                "The official BL/6101 form is not on this server. "
+                "Set BL_6101_TEMPLATE_PATH to the blank PDF, or upload the form."
+            )
+        held = {document.id for document in case.documents}
+        with template.open("rb") as handle:
+            upload = UploadFile(file=handle, filename=_DEFAULT_FORM_FILENAME)
+            result, _schedule = await self.add_uploads(case_id, [upload], role="form", replace_existing=True)
+        if result.rejected:
+            raise ConflictError(f"The BL/6101 form on this server cannot be used: {result.rejected[0].reason}")
+        if result.accepted_filenames:
+            await self.run_ingestion(case_id)
+        self.session.expire_all()
+        case = await self._get_case(case_id)
+        loaded = next((document for document in case.documents if document.id not in held), None)
+        if loaded is not None:
+            self.session.add(
+                AuditLog(
+                    case_id=case.id,
+                    document_id=loaded.id,
+                    action=AuditAction.DEFAULT_FORM_LOADED,
+                    actor=self.scope.actor,
+                    new_value={
+                        "document_id": str(loaded.id),
+                        "role": loaded.role,
+                        "content_hash": loaded.content_hash,
+                    },
+                )
+            )
+            await self.session.commit()
+            case = await self._get_case(case_id)
+        return self._workspace(case)
+
+    async def add_client_document(
+        self,
+        case_id: uuid.UUID,
+        upload: UploadFile,
+        document_type: str,
+        replace_existing: bool = True,
+    ) -> None:
+        """File one document the signer sent into the drawer they named, and read it.
+
+        The readers write empty slots only, so a detail the office typed stays as typed.
+        """
+        case = await self._get_case(case_id)
+        if case.status == CaseStatus.SIGNED:
+            raise ConflictError("This form is already signed.")
+        chosen = CLIENT_DOCUMENT_TYPES.get((document_type or "").strip())
+        if chosen is None:
+            raise BadRequestError("Choose an ID card, a proof of address, or a bank confirmation.")
+        if len(case.documents) >= _CLIENT_DOCUMENT_CAP:
+            raise ConflictError("This case holds too many files. Contact the office.")
+        held = {document.id for document in case.documents}
+        result, _schedule = await self.add_uploads(case_id, [upload], chosen, None, replace_existing)
+        if result.rejected:
+            raise BadRequestError(result.rejected[0].reason)
+        if not result.accepted_filenames:
+            return
+        await self.run_ingestion(case_id, actor="signer")
+        self.session.expire_all()
+        case = await self._get_case(case_id)
+        added = next((document for document in case.documents if document.id not in held), None)
+        if added is None:
+            return
+        self.session.add(
+            AuditLog(
+                case_id=case.id,
+                document_id=added.id,
+                action=AuditAction.CLIENT_DOCUMENT_UPLOADED,
+                actor="signer",
+                new_value={
+                    "document_id": str(added.id),
+                    "document_type": added.document_type,
+                    "role": added.role,
+                    "content_hash": added.content_hash,
+                },
+            )
+        )
+        await self.session.commit()
+
+    async def timeline(self, case_id: uuid.UUID) -> list[TimelineEvent]:
+        case = await self._get_case(case_id)
+        rows = (
+            await self.session.scalars(
+                select(AuditLog).where(AuditLog.case_id == case.id).order_by(AuditLog.created_at, AuditLog.id)
+            )
+        ).all()
+        return [
+            TimelineEvent(
+                id=row.id,
+                action=AuditAction(row.action).value,
+                actor=row.actor,
+                created_at=as_utc(row.created_at) or utcnow(),
+                document_id=row.document_id,
+                metadata=timeline_metadata(row.previous_value, row.new_value),
+            )
+            for row in rows
+        ]
 
     async def archive(self, case_id: uuid.UUID) -> tuple[IO[bytes], int]:
         """Build the office archive: the form, every source file, and a manifest of hashes.

@@ -32,6 +32,7 @@ export function PortalViewScreen({ token }: { token: string }) {
   const [busy, setBusy] = useState(false);
   const [signing, setSigning] = useState(false);
   const [step, setStep] = useState<Step>(1);
+  const [previewStamp, setPreviewStamp] = useState("");
   const synced = useRef(false);
 
   const load = useCallback(async () => {
@@ -133,7 +134,14 @@ export function PortalViewScreen({ token }: { token: string }) {
         })}
       </nav>
       {notice ? (
-        <p className="rounded-md border-2 border-amberink bg-[#fbf3e4] px-4 py-3 text-sm font-semibold text-[#4a3208]" role="alert">
+        <p
+          className={`rounded-md border-2 px-4 py-3 text-sm font-semibold ${
+            notice.startsWith("המסמך התקבל")
+              ? "border-moss bg-[#e7f3ea] text-[#145c38]"
+              : "border-amberink bg-[#fbf3e4] text-[#4a3208]"
+          }`}
+          role={notice.startsWith("המסמך התקבל") ? "status" : "alert"}
+        >
           {notice}
         </p>
       ) : null}
@@ -143,6 +151,26 @@ export function PortalViewScreen({ token }: { token: string }) {
           <p className="mt-3 text-sm leading-7">
             אלה הפרטים האישיים שנרשמו בטופס, והמקום בטופס שבו כל פרט נכתב. אין כאן מה להקליד.
           </p>
+          {view.state === "open" ? (
+            <ClientUpload
+              busy={busy}
+              onUpload={async (documentType, file) => {
+                setBusy(true);
+                setNotice(null);
+                try {
+                  const next = await portalApi.uploadDocument(token, documentType, file);
+                  if (next) setView(next);
+                  else await load();
+                  setPreviewStamp(String(Date.now()));
+                  setNotice("המסמך התקבל. הטופס עודכן לפי הקובץ החדש.");
+                } catch (error) {
+                  setNotice(hebrewOfficeError(error));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            />
+          ) : null}
           <ul className="mt-4 space-y-3">
             {view.process.required_fields.map((field) => (
               <li key={field.key} className="rounded-md border-2 border-ink/10 px-3 py-3">
@@ -165,7 +193,7 @@ export function PortalViewScreen({ token }: { token: string }) {
             <h2 className="font-serif text-2xl">צפייה בטופס המלא</h2>
           </div>
           <div className="min-w-0 overflow-hidden px-4 py-4">
-            <PdfCanvas url={portalPreviewUrl(token)} refreshKey={view.review_digest ?? ""} />
+            <PdfCanvas url={portalPreviewUrl(token)} refreshKey={`${view.review_digest ?? ""}:${previewStamp}`} />
           </div>
           <div className="flex flex-col gap-2 px-4 pb-4">
             <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => setStep(1)}>
@@ -211,6 +239,56 @@ export function PortalViewScreen({ token }: { token: string }) {
         />
       ) : null}
     </main>
+  );
+}
+
+const CLIENT_DRAWERS = [
+  { id: "id_copy", label: "תעודת זהות" },
+  { id: "proof_of_address", label: "חשבון ארנונה / כתובת" },
+  { id: "bank_confirmation", label: "אישור ניהול חשבון" },
+] as const;
+
+function ClientUpload({
+  busy,
+  onUpload,
+}: {
+  busy: boolean;
+  onUpload: (documentType: string, file: File) => Promise<void>;
+}) {
+  const [drawer, setDrawer] = useState<(typeof CLIENT_DRAWERS)[number]["id"]>("id_copy");
+  return (
+    <div className="mt-5 rounded-md border-2 border-ink/15 bg-[#fbf8f2] p-4">
+      <p className="font-semibold">העלאת מסמך מעודכן מהנייד (ת"ז / ארנונה / אישור בנק)</p>
+      <label className="mt-3 block text-sm font-semibold" htmlFor="client-drawer">
+        מגירה
+      </label>
+      <select
+        id="client-drawer"
+        className="mt-1 h-11 w-full rounded-md border-2 border-ink/25 bg-white px-3 text-base"
+        value={drawer}
+        onChange={(event) => setDrawer(event.target.value as (typeof CLIENT_DRAWERS)[number]["id"])}
+      >
+        {CLIENT_DRAWERS.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+      <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center rounded-md bg-ink px-3 text-sm font-semibold text-white">
+        {busy ? "שולח…" : "צילום או קובץ"}
+        <input
+          className="sr-only"
+          type="file"
+          accept="image/*,application/pdf"
+          disabled={busy}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) void onUpload(drawer, file);
+          }}
+        />
+      </label>
+    </div>
   );
 }
 

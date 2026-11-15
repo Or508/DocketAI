@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     storage_dir: Path | None = None
     template_dir: Path | None = None
     hebrew_font_path: Path | None = None
+    # The blank official BL/6101 the office loads with one click.
+    bl_6101_template_path: Path | None = None
     max_upload_bytes: int = 25 * 1024 * 1024
     max_files_per_upload: int = 20
     max_vision_pages: int = Field(default=2, ge=1, le=5)
@@ -70,7 +72,7 @@ class Settings(BaseSettings):
     clamav_port: int = 3310
     clamav_timeout_seconds: int = 30
 
-    @field_validator("storage_dir", "template_dir", "hebrew_font_path", mode="before")
+    @field_validator("storage_dir", "template_dir", "hebrew_font_path", "bl_6101_template_path", mode="before")
     @classmethod
     def blank_path(cls, value: object) -> object:
         if value is None or (isinstance(value, str) and not value.strip()):
@@ -101,6 +103,10 @@ class Settings(BaseSettings):
     @property
     def resolved_storage_dir(self) -> Path:
         return self.storage_dir or (API_ROOT / "data" / "storage")
+
+    @property
+    def resolved_bl_6101_template(self) -> Path:
+        return self.bl_6101_template_path or (REPO_ROOT / "test_files_for_browser" / "bl_6101_official.pdf")
 
     @property
     def resolved_template_dir(self) -> Path:

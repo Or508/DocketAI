@@ -35,7 +35,38 @@ export const portalApi = {
   },
   sign: (token: string, body: PortalSignRequest) =>
     request<PortalView>(`${root(token)}/sign`, { method: "POST", body: JSON.stringify(body) }),
+  uploadDocument: async (token: string, documentType: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file, file.name);
+    body.append("document_type", documentType);
+    body.append("replace_existing", "true");
+    const response = await fetch(`${root(token)}/documents`, { method: "POST", body, cache: "no-store" });
+    if (!response.ok) {
+      let message = response.statusText;
+      try {
+        message = detailFrom(await response.json());
+      } catch {
+        message = response.statusText;
+      }
+      throw new ApiError(message || "Request failed", response.status);
+    }
+    if (response.status === 204) return null;
+    const payload: unknown = await response.json().catch(() => null);
+    return portalViewFrom(payload);
+  },
 };
+
+function portalViewFrom(payload: unknown): PortalView | null {
+  if (looksLikePortal(payload)) return payload;
+  if (payload && typeof payload === "object" && "view" in payload && looksLikePortal(payload.view)) {
+    return payload.view;
+  }
+  return null;
+}
+
+function looksLikePortal(value: unknown): value is PortalView {
+  return Boolean(value && typeof value === "object" && "field_values" in value && "review_digest" in value);
+}
 
 export function portalPreviewUrl(token: string) {
   return `${root(token)}/preview`;
