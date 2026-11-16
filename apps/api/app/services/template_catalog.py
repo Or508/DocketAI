@@ -16,6 +16,7 @@ from app.domain.enums import CaseStatus
 from app.models.case import Case
 from app.models.process_definition import ProcessDefinition
 from app.schemas.process import DocumentTypeSpec, FieldSpec
+from app.services.default_forms import default_form
 from app.schemas.templates import (
     TemplateCaseCounts,
     TemplateDrawer,
@@ -30,15 +31,19 @@ logger = logging.getLogger(__name__)
 _documents = TypeAdapter(list[DocumentTypeSpec])
 _fields = TypeAdapter(list[FieldSpec])
 
-_ORDER = {"bl_6101": 0}
+_ORDER = {"bl_6101": 0, "onboarding": 1, "employee_onboarding": 2}
 _TEXT_HE: dict[str, tuple[str, str]] = {
     "bl_6101": (
         "בל/6101 – דיווח רב-שנתי לביטוח לאומי",
         "טופס רשמי ריק שמתמלא מתוך מסמכי הלקוח. המשרד בודק את הפרטים האישיים, והלקוח חותם על הטופס עצמו.",
     ),
+    "employee_onboarding": (
+        "טופס 101 – כרטיס עובד ובקשה להקלה ולתיאום מס",
+        "טופס 101 ריק שמתמלא מתוך מסמכי העובד: תעודת זהות, חשבון ארנונה ואישור בנק. המשרד בודק את הפרטים, והעובד חותם על הטופס עצמו.",
+    ),
     "onboarding": (
-        "קליטת עובד חדש",
-        "מסמכי זהות, מס ובנק של עובד חדש, ולאחריהם טופס הקליטה.",
+        "טופס 101 – קליטת עובד חדש",
+        "מסמכי זהות, מס ובנק של עובד חדש. הפרטים מתמלאים על טופס 101 ריק, והעובד חותם על הטופס עצמו.",
     ),
     "real_estate": (
         "עסקת מקרקעין",
@@ -56,9 +61,20 @@ _SOURCE_HE = {
 
 
 def default_template_path(process: ProcessDefinition, settings: Settings) -> Path:
+    blank = default_form(process.key, settings)
+    if blank is not None:
+        return blank.path
     if (process.layout or {}).get("sign_source") == "uploaded_form":
-        return settings.resolved_bl_6101_template
+        # A process that signs an uploaded form and offers no blank has nothing on disk.
+        return settings.resolved_template_dir / "no-default-form"
     return settings.resolved_template_dir / process.template_filename
+
+
+def _fills_blank(process: ProcessDefinition, settings: Settings) -> bool:
+    """True when a new case of this process starts from a blank form put on the case."""
+    return (process.layout or {}).get("sign_source") == "uploaded_form" or default_form(
+        process.key, settings
+    ) is not None
 
 
 @lru_cache(maxsize=8)
@@ -82,9 +98,11 @@ def _blank_targets(path: str, stamp: tuple[int, int], process_key: str) -> dict[
     }
 
 
-async def _targets(process: ProcessDefinition, path: Path, available: bool) -> dict[str, tuple[int, str]]:
+async def _targets(
+    process: ProcessDefinition, path: Path, available: bool, blank: bool
+) -> dict[str, tuple[int, str]]:
     layout = process.layout or {}
-    if layout.get("sign_source") != "uploaded_form":
+    if not blank:
         page = int(layout.get("page_index", 0)) + 1
         return {str(item.get("key")): (page, "text") for item in process.required_fields or []}
     if not available:
@@ -115,7 +133,7 @@ async def list_templates(
             entry[1] += int(count)
 
     result: list[TemplateRead] = []
-    for process in sorted(processes, key=lambda item: (_ORDER.get(item.key, 1), item.name)):
+    for process in sorted(processes, key=lambda item: (_ORDER.get(item.key, len(_ORDER)), item.name)):
         layout = process.layout or {}
         required = _documents.validate_python(process.required_documents or [])
         optional = _documents.validate_python(process.optional_documents or [])
@@ -146,9 +164,10 @@ async def list_templates(
                 )
             )
 
-        path = default_template_path(process, settings)
+        path = await asyncio.to_thread(default_template_path, process, settings)
         available = path.is_file()
-        targets = await _targets(process, path, available)
+        blank = await asyncio.to_thread(_fills_blank, process, settings)
+        targets = await _targets(process, path, available, blank)
         sections = (layout.get("flat_form") or {}).get("slot_section") or {}
         mapped = [
             TemplateField(
@@ -172,7 +191,7 @@ async def list_templates(
                 process_type=process.key,
                 title_he=title,
                 description_he=description,
-                form_source="official_blank" if layout.get("sign_source") == "uploaded_form" else "generated",
+                form_source="official_blank" if blank else "generated",
                 default_template_available=available,
                 required_drawers=drawers,
                 mapped_fields=mapped,

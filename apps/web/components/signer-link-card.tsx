@@ -7,6 +7,7 @@ import { SigningQr } from "@/components/signing-qr";
 import { Button } from "@/components/ui/button";
 import { ApiError, api } from "@/lib/api";
 import { israeliMobile, mailUrl, signedMessage, signingMessage, whatsAppUrl } from "@/lib/dispatch";
+import { dispatchFormTitle } from "@/lib/filing";
 import { hebrewOfficeError } from "@/lib/hebrew";
 
 const STORED_URL = "docket-sign-url:";
@@ -50,6 +51,7 @@ export function SignerLinkCard({
   email,
   signed,
   verificationId,
+  processKey,
 }: {
   caseId: string;
   clientName: string;
@@ -57,6 +59,7 @@ export function SignerLinkCard({
   email: string;
   signed: boolean;
   verificationId: string | null;
+  processKey: string;
 }) {
   const [link, setLink] = useState<SigningLinkRead | null>(null);
   const [freshUrl, setFreshUrl] = useState<string | null>(null);
@@ -122,7 +125,8 @@ export function SignerLinkCard({
   })();
   const signingUrl = reportedUrl || freshUrl || storedUrl(caseId);
   const mobile = israeliMobile(phone);
-  const readyText = signingUrl ? signingMessage(clientName, signingUrl) : "";
+  const formTitle = dispatchFormTitle(processKey);
+  const readyText = signingUrl ? signingMessage(clientName, signingUrl, formTitle) : "";
   const signedText = verificationId ? signedMessage(clientName, verificationId, signingUrl) : "";
   const open = link?.state === "open" && Boolean(signingUrl);
 
@@ -177,7 +181,7 @@ export function SignerLinkCard({
               </Button>
             )}
             <Button asChild variant="outline" className="w-full">
-              <a href={mailUrl(email, "טופס בל/6101 מוכן לבדיקה ולחתימה", readyText)}>שליחה באימייל</a>
+              <a href={mailUrl(email, `${formTitle} מוכן לבדיקה ולחתימה`, readyText)}>שליחה באימייל</a>
             </Button>
             {mobile ? null : <p className="text-clay">אין מספר נייד ישראלי בתיק, ולכן אי אפשר לפתוח את וואטסאפ.</p>}
             </div>

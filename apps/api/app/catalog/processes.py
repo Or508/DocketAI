@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass
 
 from pydantic import TypeAdapter
@@ -77,7 +78,12 @@ PROCESSES: tuple[ProcessSeed, ...] = (
         name="Employee onboarding",
         description="Identity, tax, and bank documents for a new hire, then the onboarding form.",
         template_filename="onboarding-v1.pdf",
-        layout={"page_index": 0, "signature_rect": signature_rect()},
+        # Signs the Form 101 loaded onto the case when there is one, else the generated template.
+        layout={
+            "page_index": 0,
+            "signature_rect": signature_rect(),
+            "signature_labels": ["חתימת העובד"],
+        },
         required_documents=[
             {
                 "type_key": "id_copy",
@@ -604,6 +610,89 @@ PROCESSES: tuple[ProcessSeed, ...] = (
             _bl_slot("bank_name", "Bank name", "שם הבנק", "text", True, "שם הבנק רושם את פרט החשבון בטופס.", "The bank name records the account detail on the form."),
             _bl_slot("bank_branch", "Branch number", "מס' סניף", "text", False, "מספר הסניף רושם את פרט החשבון בטופס.", "The branch number records the account detail on the form."),
             _bl_slot("bank_account", "Account number", "מספר החשבון", "text", False, "מספר החשבון רושם את פרט החשבון בטופס.", "The account number records the account detail on the form."),
+        ],
+    ),
+)
+
+
+def _f101_slot(
+    key: str,
+    label: str,
+    label_he: str,
+    field_type: str,
+    rtl: bool,
+    section_he: str,
+    section_en: str,
+    *,
+    required: bool = True,
+) -> dict:
+    return {
+        "key": key,
+        "label": label,
+        "label_he": label_he,
+        "field_type": field_type,
+        "pdf_field_name": key,
+        "required": required,
+        "rtl": rtl,
+        "provenance": _provenance(
+            "טופס 101 – כרטיס עובד",
+            "Form 101 employee card",
+            section_he,
+            section_en,
+            f"{label_he} נרשם בטופס כפי שהוא מופיע במסמכי העובד.",
+            f"The {label.lower()} is recorded on the form as the employee's documents show it.",
+        ),
+    }
+
+
+_F101_EMPLOYEE = "פרטי העובד"
+_F101_ADDRESS = "כתובת מגורים ופרטי התקשרות"
+_F101_BANK = "פרטי חשבון הבנק"
+_F101_DECLARATION = "הצהרת העובד"
+
+# Form 101 takes the same personal details as BL/6101, from the same three documents,
+# under the same slot keys, so one set of readers serves both forms.
+_BL_6101 = next(item for item in PROCESSES if item.key == "bl_6101")
+
+PROCESSES = (
+    *PROCESSES,
+    ProcessSeed(
+        key="employee_onboarding",
+        name="Form 101 employee card",
+        description="Blank Form 101 filled from the employee's documents. The office reviews the personal details, then the employee signs the form.",
+        template_filename="form-101-uploaded",
+        layout={
+            "sign_source": "uploaded_form",
+            "signature_labels": ["חתימת העובד"],
+            "flat_form": {
+                "sections": [_F101_EMPLOYEE, _F101_ADDRESS, _F101_BANK, _F101_DECLARATION],
+                "slot_section": {
+                    "national_id": _F101_EMPLOYEE,
+                    "first_name": _F101_EMPLOYEE,
+                    "last_name": _F101_EMPLOYEE,
+                    "city": _F101_ADDRESS,
+                    "street": _F101_ADDRESS,
+                    "house_number": _F101_ADDRESS,
+                    "phone": _F101_ADDRESS,
+                    "bank_name": _F101_BANK,
+                    "bank_branch": _F101_BANK,
+                    "bank_account": _F101_BANK,
+                },
+            },
+        },
+        required_documents=copy.deepcopy(_BL_6101.required_documents),
+        optional_documents=[],
+        required_fields=[
+            _f101_slot("national_id", "National ID", "מספר זהות", "id_number", False, _F101_EMPLOYEE, "employee details"),
+            _f101_slot("first_name", "First name", "שם פרטי", "text", True, _F101_EMPLOYEE, "employee details"),
+            _f101_slot("last_name", "Last name", "שם משפחה", "text", True, _F101_EMPLOYEE, "employee details"),
+            _f101_slot("city", "City of residence", "יישוב", "text", True, _F101_ADDRESS, "home address"),
+            _f101_slot("street", "Street", "רחוב", "text", True, _F101_ADDRESS, "home address"),
+            _f101_slot("house_number", "House number", "מס' בית", "text", False, _F101_ADDRESS, "home address", required=False),
+            _f101_slot("phone", "Phone", "טלפון נייד", "phone", False, _F101_ADDRESS, "home address"),
+            _f101_slot("bank_name", "Bank name", "שם הבנק", "text", True, _F101_BANK, "bank account"),
+            _f101_slot("bank_branch", "Branch number", "מס' סניף", "text", False, _F101_BANK, "bank account"),
+            _f101_slot("bank_account", "Account number", "מספר חשבון", "text", False, _F101_BANK, "bank account"),
         ],
     ),
 )

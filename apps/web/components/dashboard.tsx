@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { OfficeBar } from "@/components/office-bar";
 import { ApiError, api, detailFrom, downloadCaseArchive } from "@/lib/api";
 import { archiveFilename } from "@/lib/dispatch";
-import { folderFromWorkspace, processLabel, type FolderTone } from "@/lib/filing";
+import { dispatchFormTitle, folderFromWorkspace, processFamily, processLabel, type FolderTone, type ProcessFamily } from "@/lib/filing";
 import { hebrewOfficeError } from "@/lib/hebrew";
 import { formatWhen } from "@/lib/utils";
 
@@ -25,6 +25,24 @@ const FILTERS: { id: Bucket; label: string }[] = [
   { id: "awaiting", label: "ממתין לחתימת לקוח" },
   { id: "done", label: "נחתם" },
 ];
+
+type ProcessFilter = "all" | Exclude<ProcessFamily, "other">;
+
+const PROCESS_FILTERS: { id: ProcessFilter; label: string }[] = [
+  { id: "all", label: "כל הסוגים" },
+  { id: "bl_6101", label: "בל/6101" },
+  { id: "onboarding", label: "קליטת עובד (101)" },
+  { id: "real_estate", label: "מקרקעין" },
+];
+
+const QUICK_CASES = [
+  { family: "bl_6101" as const, prefer: "bl_6101", label: "בל/6101 – ביטוח לאומי" },
+  { family: "onboarding" as const, prefer: "employee_onboarding", label: "טופס 101 – קליטת עובד חדש" },
+];
+
+function isDraft(tone: FolderTone) {
+  return tone !== "done" && tone !== "awaiting";
+}
 
 function bucketOf(tone: FolderTone): Exclude<Bucket, "all"> {
   if (tone === "done") return "done";
@@ -56,6 +74,12 @@ export function Dashboard() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [processFilter, setProcessFilter] = useState<ProcessFilter>("all");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickClient, setQuickClient] = useState("");
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickError, setQuickError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,6 +192,7 @@ export function Dashboard() {
         throw new ApiError(message || "Request failed", response.status);
       }
       setCards((current) => current.filter((item) => item.item.id !== card.item.id));
+      setSelected((current) => current.filter((id) => id !== card.item.id));
     } catch (reason) {
       setActionError(hebrewOfficeError(reason));
     } finally {
@@ -175,13 +200,79 @@ export function Dashboard() {
     }
   }
 
+  async function openQuick(key: string, label: string) {
+    setQuickBusy(true);
+    setQuickError(null);
+    try {
+      const client = quickClient.trim();
+      const created = await api.createCase({
+        name: client || label,
+        process_key: key,
+        client_name: client || undefined,
+      });
+      try {
+        await api.loadDefaultForm(created.id);
+      } catch {
+        /* The case is open. The workspace can load the blank form again. */
+      }
+      router.push(`/cases/${created.id}`);
+    } catch (reason) {
+      setQuickError(reason instanceof ApiError ? reason.message : "לא ניתן לפתוח את התיק.");
+      setQuickBusy(false);
+    }
+  }
+
+  async function deleteSelected(ids: string[]) {
+    if (!ids.length) return;
+    if (!window.confirm(`למחוק ${ids.length} תיקי טיוטה? התיקים והקבצים שבהם יימחקו.`)) return;
+    setActingId("bulk");
+    setActionError(null);
+    const removed: string[] = [];
+    let failure: string | null = null;
+    for (const id of ids) {
+      try {
+        const response = await fetch(`/api/cases/${id}`, { method: "DELETE" });
+        if (response.status === 401) {
+          window.location.assign(`/login?next=${encodeURIComponent("/cases")}`);
+          return;
+        }
+        if (!response.ok && response.status !== 204) {
+          let message = response.statusText;
+          try {
+            message = detailFrom(await response.json());
+          } catch {
+            message = response.statusText;
+          }
+          throw new ApiError(message || "Request failed", response.status);
+        }
+        removed.push(id);
+      } catch (reason) {
+        failure = hebrewOfficeError(reason);
+        break;
+      }
+    }
+    if (removed.length) {
+      const gone = new Set(removed);
+      setCards((current) => current.filter((card) => !gone.has(card.item.id)));
+      setSelected((current) => current.filter((id) => !gone.has(id)));
+    }
+    setActionError(failure);
+    setActingId(null);
+  }
+
+  function toggleSelected(id: string) {
+    setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
   const needle = query.trim().toLowerCase();
   const visible = cards.filter((card) => {
     if (bucket !== "all" && bucketOf(card.tone) !== bucket) return false;
+    if (processFilter !== "all" && processFamily(card.item.process_key) !== processFilter) return false;
     if (!needle) return true;
     const haystack = [card.item.client_name, card.item.name, card.item.id].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(needle);
   });
+  const selectedIds = selected.filter((id) => visible.some((card) => card.item.id === id && isDraft(card.tone)));
 
   return (
     <main className="mx-auto flex min-h-screen max-w-6xl flex-col px-5 py-8">
@@ -212,6 +303,44 @@ export function Dashboard() {
               {exporting ? "מייצא…" : "ייצוא לאקסל (CSV)"}
             </button>
           </nav>
+        </div>
+        <div className="relative">
+          <Button type="button" onClick={() => setQuickOpen((open) => !open)} aria-expanded={quickOpen}>
+            + פתיחת תיק מהיר
+          </Button>
+          {quickOpen ? (
+            <div className="absolute end-0 z-20 mt-2 w-80 rounded-lg border-2 border-ink/15 bg-white p-4 shadow-card">
+              <p className="text-sm font-semibold text-ink">פתחו תיק וטענו את הטופס הריק</p>
+              <label className="mt-3 block text-sm font-semibold text-ink" htmlFor="quick-client">
+                שם הלקוח
+              </label>
+              <Input id="quick-client" className="mt-2" value={quickClient} onChange={(event) => setQuickClient(event.target.value)} />
+              {quickError ? (
+                <p className="mt-3 text-sm font-medium text-clay" role="alert">
+                  {quickError}
+                </p>
+              ) : null}
+              <div className="mt-3 grid gap-2">
+                {QUICK_CASES.map((item) => {
+                  const match =
+                    processes.find((process) => process.key === item.prefer) ??
+                    processes.find((process) => processFamily(process.key) === item.family);
+                  return (
+                    <Button
+                      key={item.family}
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      disabled={!match || quickBusy}
+                      onClick={() => void openQuick(match?.key ?? "", item.label)}
+                    >
+                      {quickBusy ? "פותח…" : item.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -283,6 +412,37 @@ export function Dashboard() {
                 );
               })}
             </div>
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="סינון לפי סוג תהליך">
+              {PROCESS_FILTERS.map((item) => {
+                const count = item.id === "all" ? cards.length : cards.filter((card) => processFamily(card.item.process_key) === item.id).length;
+                const selectedFilter = processFilter === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={selectedFilter}
+                    className={`min-h-11 rounded-md border-2 px-3 text-sm font-semibold ${selectedFilter ? "border-tide bg-tide text-white" : "border-ink/15 bg-white text-ink"}`}
+                    onClick={() => setProcessFilter(item.id)}
+                  >
+                    {item.label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+            {selectedIds.length > 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border-2 border-clay/40 bg-[#f8ece8] px-3 py-2">
+                <p className="text-sm font-semibold text-ink">נבחרו {selectedIds.length} תיקי טיוטה</p>
+                <button
+                  type="button"
+                  className="inline-flex h-10 items-center rounded-md border-2 border-clay px-3 text-sm font-semibold text-clay"
+                  disabled={actingId === "bulk"}
+                  onClick={() => void deleteSelected(selectedIds)}
+                >
+                  {actingId === "bulk" ? "מוחק…" : "מחק טיוטות שנבחרו"}
+                </button>
+              </div>
+            ) : null}
           </div>
           <div className="mt-4 grid gap-4">
             {cards.length === 0 ? (
@@ -296,8 +456,10 @@ export function Dashboard() {
                   card={card}
                   busy={actingId === card.item.id}
                   onDownload={() => void downloadArchive(card)}
-                  onDelete={card.tone === "done" || card.tone === "awaiting" ? undefined : () => void deleteDraft(card)}
+                  onDelete={isDraft(card.tone) ? () => void deleteDraft(card) : undefined}
                   remind={card.tone === "awaiting"}
+                  selected={selected.includes(card.item.id)}
+                  onToggle={isDraft(card.tone) ? () => toggleSelected(card.item.id) : undefined}
                 />
               ))
             )}
@@ -314,12 +476,16 @@ function FolderCard({
   onDownload,
   onDelete,
   remind,
+  selected = false,
+  onToggle,
 }: {
   card: Card;
   busy: boolean;
   onDownload: () => void;
   onDelete?: () => void;
   remind?: boolean;
+  selected?: boolean;
+  onToggle?: () => void;
 }) {
   const docPct = card.docsTotal ? Math.round((card.docsDone / card.docsTotal) * 100) : 0;
   const fieldPct = card.fieldsTotal ? Math.round((card.fieldsDone / card.fieldsTotal) * 100) : 0;
@@ -343,7 +509,13 @@ function FolderCard({
         <Meter label="פרטים אישיים" done={card.fieldsDone} total={card.fieldsTotal} pct={fieldPct} />
       </span>
     </a>
-    <div className="flex flex-wrap gap-2 border-t-2 border-ink/10 px-5 py-3">
+    <div className="flex flex-wrap items-center gap-2 border-t-2 border-ink/10 px-5 py-3">
+      {onToggle ? (
+        <label className="inline-flex h-10 items-center gap-2 text-sm font-semibold text-ink">
+          <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`בחירת תיק הטיוטה של ${card.item.client_name || card.item.name}`} />
+          בחירה
+        </label>
+      ) : null}
       <button
         type="button"
         className="inline-flex h-10 items-center rounded-md border-2 border-ink/25 bg-white px-3 text-sm font-semibold text-ink"
@@ -353,7 +525,11 @@ function FolderCard({
         הורד ZIP
       </button>
       {remind ? (
-        <WhatsAppReminder clientName={card.item.client_name || card.item.name} phone={card.phone} />
+        <WhatsAppReminder
+          clientName={card.item.client_name || card.item.name}
+          phone={card.phone}
+          formTitle={dispatchFormTitle(card.item.process_key)}
+        />
       ) : null}
       {onDelete ? (
         <button

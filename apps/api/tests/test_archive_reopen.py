@@ -99,7 +99,7 @@ def test_signed_archive_holds_the_exact_signed_pdf_the_sources_and_a_manifest(
 
     bundle, manifest, raw = _archive(client, case_id)
     assert sorted(bundle.namelist()) == [
-        "bl_6101_signed.pdf",
+        "form_101_signed.pdf",
         "source_documents/bank_confirmation_c-bank.pdf",
         "source_documents/id_copy_a-id.pdf",
         "source_documents/tax_form_b-tax.pdf",
@@ -107,7 +107,7 @@ def test_signed_archive_holds_the_exact_signed_pdf_the_sources_and_a_manifest(
     ]
 
     # The signed PDF is byte for byte the one on record.
-    pdf = bundle.read("bl_6101_signed.pdf")
+    pdf = bundle.read("form_101_signed.pdf")
     assert pdf == client.get(f"/cases/{case_id}/signed-document").content
     assert hashlib.sha256(pdf).hexdigest() == audit["file_sha256"]
 
@@ -123,7 +123,7 @@ def test_signed_archive_holds_the_exact_signed_pdf_the_sources_and_a_manifest(
     assert seal["signed_at"].startswith(audit["signed_at"][:19])
     assert len(seal["review_digest"]) == 64
     assert manifest["form_pdf"] == {
-        "archive_path": "bl_6101_signed.pdf",
+        "archive_path": "form_101_signed.pdf",
         "kind": "signed",
         "sha256": audit["file_sha256"],
     }
@@ -165,7 +165,7 @@ def test_signed_archive_holds_the_exact_signed_pdf_the_sources_and_a_manifest(
     assert recorded[0].new_value == {
         "status": "signed",
         "documents": 3,
-        "form_pdf": "bl_6101_signed.pdf",
+        "form_pdf": "form_101_signed.pdf",
         "form_pdf_sha256": audit["file_sha256"],
     }
 
@@ -205,16 +205,16 @@ def test_unsigned_archive_carries_the_draft_only_when_a_form_is_present(client: 
     assert marked.status_code == 200, marked.text
     bundle, manifest, _raw = _archive(client, case_id)
     assert sorted(bundle.namelist()) == [
-        "bl_6101_draft.pdf",
+        "form_101_draft.pdf",
         "source_documents/form_office-secret-form.pdf",
         "verification_manifest.json",
     ]
-    draft = bundle.read("bl_6101_draft.pdf")
+    draft = bundle.read("form_101_draft.pdf")
     assert draft.startswith(b"%PDF")
     assert manifest["status"] != "signed"
     assert manifest["signature_seal"] is None
     assert manifest["form_pdf"] == {
-        "archive_path": "bl_6101_draft.pdf",
+        "archive_path": "form_101_draft.pdf",
         "kind": "draft",
         "sha256": hashlib.sha256(draft).hexdigest(),
         "document_id": document_id,
@@ -369,7 +369,7 @@ def test_reopen_unlocks_a_portal_signed_case_and_keeps_its_data(client: TestClie
     assert fresh["file_sha256"] != seal["file_sha256"]
 
     bundle, manifest, raw = _archive(client, case_id)
-    assert hashlib.sha256(bundle.read("bl_6101_signed.pdf")).hexdigest() == fresh["file_sha256"]
+    assert hashlib.sha256(bundle.read("form_101_signed.pdf")).hexdigest() == fresh["file_sha256"]
     assert manifest["signature_seal"]["verification_id"] == fresh["signer_verification_id"]
     assert manifest["signature_seal"]["review_digest"] != view["review_digest"]
     trail = manifest["audit_trail"]

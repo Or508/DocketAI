@@ -34,7 +34,12 @@ type Template = {
 };
 
 const OFFICE = "/api/office";
-const MODE_LABELS = { digit_boxes: "משבצות ספרות", text: "טקסט חופשי" } as const;
+const AUTOMATION_NAMES: Record<string, string> = {
+  onboarding: "טופס 101",
+  employee_onboarding: "טופס 101",
+  bl_6101: "בל/6101",
+};
+const MODE_LABELS ={ digit_boxes: "משבצות ספרות", text: "טקסט חופשי" } as const;
 
 function toLogin() {
   window.location.assign(`/login?next=${encodeURIComponent("/templates")}`);
@@ -128,20 +133,32 @@ function TemplateCard({ template }: { template: Template }) {
           </h2>
           <p className="mt-2 max-w-2xl text-mist">{template.description_he}</p>
         </div>
-        <span
-          className={`shrink-0 rounded-full border-2 px-3 py-1 text-sm font-semibold ${
-            ready ? "border-moss bg-moss/10 text-moss" : "border-amberink bg-amberink/10 text-amberink"
-          }`}
-        >
-          {ready
-            ? official
-              ? "הטופס הרשמי זמין במערכת"
-              : "תבנית המערכת מוכנה"
-            : official
-              ? "הטופס הרשמי חסר — נדרשת העלאה ידנית"
-              : "התבנית חסרה"}
-        </span>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          {official && ready ? (
+            <span className="rounded-full bg-tide px-3 py-1 text-sm font-semibold text-white">
+              ✓ אוטומציה פעילה · {AUTOMATION_NAMES[template.process_type] ?? "מילוי וחתימה"}
+            </span>
+          ) : null}
+          <span
+            className={`rounded-full border-2 px-3 py-1 text-sm font-semibold ${
+              ready ? "border-moss bg-moss/10 text-moss" : "border-amberink bg-amberink/10 text-amberink"
+            }`}
+          >
+            {ready
+              ? official
+                ? "הטופס הריק זמין במערכת"
+                : "תבנית המערכת מוכנה"
+              : official
+                ? "הטופס הריק חסר — נדרשת העלאה ידנית"
+                : "התבנית חסרה"}
+          </span>
+        </div>
       </div>
+      {official && ready ? (
+        <p className="mt-3 text-sm text-tide">
+          פתיחת תיק מתבנית זו טוענת את הטופס אוטומטית, ממלאת אותו מתוך מסמכי הלקוח, ומצרפת חתימה וחותם אימות.
+        </p>
+      ) : null}
 
       <dl className="mt-5 grid grid-cols-3 gap-3 text-center">
         <Count label="סה״כ תיקים" value={template.case_counts.total} />

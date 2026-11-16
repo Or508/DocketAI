@@ -6,9 +6,9 @@ export function israeliMobile(raw: string): string | null {
   return null;
 }
 
-export function signingMessage(clientName: string, signingUrl: string) {
+export function signingMessage(clientName: string, signingUrl: string, formTitle: string) {
   const name = clientName.trim() || "לקוח";
-  return `שלום ${name}, טופס בל/6101 (דיווח רב-שנתי לביטוח לאומי) מוכן לבדיקה ולחתימה דיגיטלית בקישור המאובטח: ${signingUrl}`;
+  return `שלום ${name}, ${formTitle} מוכן לבדיקה ולחתימה דיגיטלית בקישור המאובטח: ${signingUrl}`;
 }
 
 export function signedMessage(clientName: string, verificationId: string, link: string | null) {

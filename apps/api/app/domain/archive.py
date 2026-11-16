@@ -3,8 +3,16 @@
 import re
 from typing import Any
 
-SIGNED_FORM_NAME = "bl_6101_signed.pdf"
-DRAFT_FORM_NAME = "bl_6101_draft.pdf"
+# Both onboarding processes fill a Form 101, so their exported form carries that name.
+_FORM_STEMS = {"onboarding": "form_101", "employee_onboarding": "form_101"}
+
+
+def form_names(process_key: str) -> tuple[str, str]:
+    """The archive names of a case's form, signed and draft, after the form its process fills."""
+    stem = _FORM_STEMS.get(process_key) or re.sub(r"[^a-z0-9_]+", "_", process_key.lower()).strip("_") or "form"
+    return f"{stem}_signed.pdf", f"{stem}_draft.pdf"
+
+
 MANIFEST_NAME = "verification_manifest.json"
 SOURCE_FOLDER = "source_documents"
 

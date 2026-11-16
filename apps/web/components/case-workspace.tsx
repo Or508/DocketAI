@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { OfficeBar } from "@/components/office-bar";
 import { ApiError, api, downloadCaseArchive, filledFormUrl, signedDocumentUrl } from "@/lib/api";
 import { archiveFilename } from "@/lib/dispatch";
-import { FIELD_LABEL, folderFromWorkspace, processLabel } from "@/lib/filing";
+import { FIELD_LABEL, blankFormNotice, dispatchFormTitle, folderFromWorkspace, formDrawerTitle, processLabel, processTypeOf } from "@/lib/filing";
 import { hebrewDetail, hebrewOfficeError, hebrewUploadReason } from "@/lib/hebrew";
 
 export function CaseWorkspaceView({ caseId }: { caseId: string }) {
@@ -63,7 +63,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
             if (claim.slot === "form") {
               const already = latestIntake.forms.some((item) => item.document_id === document.id && item.role === "form");
               if (!already) {
-                const title = latest.process.key === "bl_6101" ? "טופס למילוי וחתימה - בל/6101" : undefined;
+                const title = formDrawerTitle(processTypeOf(latest));
                 await api.setDocumentRole(caseId, document.id, "form", title);
                 for (const other of latestIntake.forms) {
                   if (other.role === "form" && other.document_id !== document.id) {
@@ -262,7 +262,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
     setSlotErrors((current) => ({ ...current, [fromSlot]: "" }));
     try {
       if (toSlot === "form") {
-        const title = workspace?.process.key === "bl_6101" ? "טופס למילוי וחתימה - בל/6101" : undefined;
+        const title = workspace ? formDrawerTitle(processTypeOf(workspace)) : undefined;
         await api.setDocumentRole(caseId, documentId, "form", title);
         for (const other of intake?.forms ?? []) {
           if (other.role === "form" && other.document_id !== documentId) {
@@ -289,6 +289,8 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
 
   const form = intake?.forms.find((item) => item.role === "form") ?? null;
   const tone = folderFromWorkspace(workspace);
+  const processType = processTypeOf(workspace);
+  const loadedNotice = blankFormNotice(processType);
   const previewRev = [
     workspace.case.updated_at,
     form?.document_id ?? "",
@@ -315,7 +317,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
     setError(null);
     try {
       await api.loadDefaultForm(caseId);
-      setNotice("טופס בל/6101 נטען מהמערכת.");
+      setNotice(loadedNotice);
       await refresh();
     } catch (reason) {
       setError(hebrewOfficeError(reason));
@@ -351,7 +353,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
             <OfficeBar />
           </div>
           <h1 className="mt-4 font-serif text-4xl">{workspace.case.client_name || workspace.case.name}</h1>
-          <p className="mt-1 text-sm font-medium text-ink">{processLabel(workspace.process.key, workspace.process.name)}</p>
+          <p className="mt-1 text-sm font-medium text-ink">{processLabel(processType, workspace.process.name)}</p>
         </div>
         <div className="flex w-full max-w-xs flex-col items-stretch gap-2 sm:w-auto">
           <StatusPill tone={tone} />
@@ -368,6 +370,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
               className="w-full"
               clientName={workspace.case.client_name || workspace.case.name}
               phone={workspace.field_values.phone ?? ""}
+              formTitle={dispatchFormTitle(processType)}
               explain
             />
           ) : null}
@@ -393,7 +396,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
           onMove={moveDocument}
           onReread={rereadDocuments}
           rereading={rereading}
-          onLoadBlank={workspace.process.key === "bl_6101" && workspace.case.status !== "signed" ? loadBlankForm : undefined}
+          onLoadBlank={workspace.case.status !== "signed" ? loadBlankForm : undefined}
           loadingBlank={loadingForm}
           onView={setSourceFile}
         />
@@ -459,6 +462,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
             email={workspace.field_values.email ?? ""}
             signed={workspace.case.status === "signed"}
             verificationId={workspace.case.audit.signer_verification_id}
+            processKey={processType}
           />
           <div className="rounded-lg border-2 border-ink/15 bg-white p-4">
             <Button type="button" variant="outline" disabled={!workspace.ready_to_sign || busy} onClick={() => setSigning(true)}>

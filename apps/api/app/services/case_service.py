@@ -32,9 +32,8 @@ from app.core.exceptions import (
 )
 from app.core.time import utcnow
 from app.domain.archive import (
-    DRAFT_FORM_NAME,
     MANIFEST_NAME,
-    SIGNED_FORM_NAME,
+    form_names,
     audit_entry,
     source_name,
     timeline_metadata,
@@ -93,6 +92,7 @@ from app.schemas.notes import NoteRead
 from app.schemas.timeline import TimelineEvent
 from app.schemas.workspace import CaseWorkspace, FileRejection, UploadResult
 from app.services.chat_collector import OPENING, ChatTurn
+from app.services.default_forms import default_form
 from app.services.field_validator import missing_required_fields, validate_field
 from app.services.pdf_filler import FilledForm, SignedArtifact, decode_signature_png
 from app.services.object_store import ObjectMissingError, ObjectReader
@@ -108,8 +108,6 @@ class ChatStart:
     turn: ChatTurn
     stamp: str
 
-_DEFAULT_FORM_PROCESS = "bl_6101"
-_DEFAULT_FORM_FILENAME = "bl_6101_official.pdf"
 _CLIENT_DOCUMENT_CAP = 40
 # The names the signer's page uses for a drawer, and the catalog's own.
 CLIENT_DOCUMENT_TYPES = {
@@ -1191,24 +1189,22 @@ class CaseService:
         logger.info("Case %s deleted by %s with %d files", case_id, self.scope.actor, documents)
 
     async def load_default_form(self, case_id: uuid.UUID) -> CaseWorkspace:
-        """Put the server's blank BL/6101 on the case as its form, in place of any form it has."""
+        """Put the server's blank form for this process on the case, in place of any form it has."""
         case = await self._get_case(case_id)
         if case.status == CaseStatus.SIGNED:
             raise ConflictError("This case is already signed.")
-        if case.process_definition.key != _DEFAULT_FORM_PROCESS:
-            raise ConflictError("Only a BL/6101 case has a form to load from the server.")
-        template = self.container.settings.resolved_bl_6101_template
+        blank = await asyncio.to_thread(default_form, case.process_definition.key, self.container.settings)
+        if blank is None:
+            raise ConflictError("This kind of case has no form to load from the server.")
+        template = blank.path
         if not template.is_file():
-            raise NotFoundError(
-                "The official BL/6101 form is not on this server. "
-                "Set BL_6101_TEMPLATE_PATH to the blank PDF, or upload the form."
-            )
+            raise NotFoundError(blank.missing)
         held = {document.id for document in case.documents}
         with template.open("rb") as handle:
-            upload = UploadFile(file=handle, filename=_DEFAULT_FORM_FILENAME)
+            upload = UploadFile(file=handle, filename=blank.filename)
             result, _schedule = await self.add_uploads(case_id, [upload], role="form", replace_existing=True)
         if result.rejected:
-            raise ConflictError(f"The BL/6101 form on this server cannot be used: {result.rejected[0].reason}")
+            raise ConflictError(f"The {blank.title} form on this server cannot be used: {result.rejected[0].reason}")
         if result.accepted_filenames:
             await self.run_ingestion(case_id)
         self.session.expire_all()
@@ -1333,6 +1329,7 @@ class CaseService:
         case = await self._get_case(case_id)
         exported_at = utcnow()
         signed = case.status == CaseStatus.SIGNED and bool(case.output_path)
+        signed_name, draft_name = form_names(case.process_definition.key)
         spool: IO[bytes] = tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024)
         try:
             with zipfile.ZipFile(spool, "w", zipfile.ZIP_DEFLATED) as bundle:
@@ -1340,9 +1337,9 @@ class CaseService:
                 if signed:
                     # signed_pdf refuses bytes that do not match the recorded hash.
                     data, _filename = await self.signed_pdf(case_id)
-                    await asyncio.to_thread(bundle.writestr, SIGNED_FORM_NAME, data)
+                    await asyncio.to_thread(bundle.writestr, signed_name, data)
                     form_entry = {
-                        "archive_path": SIGNED_FORM_NAME,
+                        "archive_path": signed_name,
                         "kind": "signed",
                         "sha256": hashlib.sha256(data).hexdigest(),
                     }
@@ -1351,9 +1348,9 @@ class CaseService:
                     if form is not None:
                         filled = await self._fill_original(case, form)
                         data = await asyncio.to_thread(self.container.pdf_filler.stamp_draft, filled.pdf_bytes)
-                        await asyncio.to_thread(bundle.writestr, DRAFT_FORM_NAME, data)
+                        await asyncio.to_thread(bundle.writestr, draft_name, data)
                         form_entry = {
-                            "archive_path": DRAFT_FORM_NAME,
+                            "archive_path": draft_name,
                             "kind": "draft",
                             "sha256": hashlib.sha256(data).hexdigest(),
                             "document_id": str(form.id),
@@ -1945,18 +1942,30 @@ def _field_sources(case: Case) -> dict[str, FieldSource]:
 
 
 def _sign_form(case: Case) -> Document | None:
-    """The one uploaded form this process signs, or None when it signs a template."""
+    """The one uploaded form this case signs, or None when it signs the process template.
+
+    A process that signs only an uploaded form needs exactly one. A process that can sign
+    either way uses the form on the case when there is one, and its template otherwise.
+    """
     layout = case.process_definition.layout or {}
-    if layout.get("sign_source") != "uploaded_form":
+    required = layout.get("sign_source") == "uploaded_form"
+    if not required and not _signs_loaded_form(layout):
         return None
     forms = [
         document
         for document in case.documents
         if document.role == "form" and document.status != DocumentStatus.FAILED
     ]
+    if not forms and not required:
+        return None
     if len(forms) != 1:
         raise ConflictError("Mark exactly one uploaded form before signing.")
     return forms[0]
+
+
+def _signs_loaded_form(layout: dict) -> bool:
+    """A template process that names a signature label can also sign a form put on the case."""
+    return layout.get("sign_source") != "uploaded_form" and bool(layout.get("signature_labels"))
 
 
 def _draft_form(case: Case) -> Document | None:
@@ -2063,7 +2072,7 @@ def _is_signed_form(case: Case, document: Document) -> bool:
     """The form a process signs is not evidence: once read, it needs no document type."""
     layout = case.process_definition.layout or {}
     return (
-        layout.get("sign_source") == "uploaded_form"
+        (layout.get("sign_source") == "uploaded_form" or _signs_loaded_form(layout))
         and document.role == "form"
         and document.status in {DocumentStatus.CLASSIFIED, DocumentStatus.NEEDS_REVIEW}
     )

@@ -288,7 +288,10 @@ def test_reading_is_on_for_this_process_only() -> None:
         for process in PROCESSES
     }
     assert switched["bl_6101"] == {"id_copy": True, "proof_of_address": True, "bank_confirmation": True}
-    others = [flag for key, flags in switched.items() if key != "bl_6101" for flag in flags.values()]
+    # The Form 101 card reads the same three drawers. No other process reads anything.
+    assert switched["employee_onboarding"] == switched["bl_6101"]
+    reading = {"bl_6101", "employee_onboarding"}
+    others = [flag for key, flags in switched.items() if key not in reading for flag in flags.values()]
     assert others and not any(others)
 
 

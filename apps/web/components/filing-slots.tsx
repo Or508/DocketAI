@@ -5,9 +5,7 @@ import type { CaseWorkspace, IntakeSummary } from "@docketai/shared-types";
 
 import { Button } from "@/components/ui/button";
 import { DRAWER_ACCEPT, filesFromTransfer } from "@/lib/clipboard-files";
-import { SLOT_LABEL } from "@/lib/filing";
-
-const FORM_LABEL = "טופס למילוי וחתימה - בל/6101";
+import { SLOT_LABEL, blankFormButton, formDrawerTitle, processTypeOf } from "@/lib/filing";
 const RECEIVED_READ = "התקבל · נקראו שדות אוטומטית";
 const RECEIVED_NOTE = "הקובץ נקלט במגירה (לא זוהו שדות אוטומטיים בקובץ זה – ניתן להשלים ידנית במרכז המסך)";
 
@@ -43,7 +41,9 @@ export function FilingSlots({
 }) {
   const [armed, setArmed] = useState<string | null>(null);
   const forms = intake?.forms.filter((item) => item.role === "form") ?? [];
-  const formTitle = workspace.process.key === "bl_6101" ? FORM_LABEL : "טופס למילוי וחתימה";
+  const processType = processTypeOf(workspace);
+  const formTitle = formDrawerTitle(processType);
+  const loadLabel = blankFormButton(processType);
   const sources = [...workspace.process.required_documents, ...workspace.process.optional_documents];
   const choices: DrawerChoice[] = [
     { id: "form", label: formTitle },
@@ -118,6 +118,7 @@ export function FilingSlots({
           onMove={onMove}
           onLoadBlank={onLoadBlank}
           loadingBlank={loadingBlank}
+          loadLabel={loadLabel}
           onView={onView}
         />
         {sources.map((document) => {
@@ -192,6 +193,7 @@ function Slot({
   onMove,
   onLoadBlank,
   loadingBlank,
+  loadLabel,
   onView,
 }: {
   slot: string;
@@ -208,6 +210,7 @@ function Slot({
   onMove: (documentId: string, fromSlot: string, toSlot: string) => Promise<void>;
   onLoadBlank?: () => Promise<void>;
   loadingBlank?: boolean;
+  loadLabel?: string;
   onView: (file: DrawerFile) => void;
 }) {
   const [over, setOver] = useState(false);
@@ -252,14 +255,14 @@ function Slot({
         <div className="flex flex-wrap items-center gap-2">
           {onLoadBlank && !ready ? (
             <Button type="button" disabled={loadingBlank} onClick={() => void onLoadBlank()}>
-              {loadingBlank ? "טוען את הטופס…" : "טען טופס בל/6101 אוטומטית"}
+              {loadingBlank ? "טוען את הטופס…" : loadLabel}
             </Button>
           ) : null}
           <FileButton label={ready ? "החלף קובץ במגירה" : "העלאה למגירה"} onFile={(file) => onUpload(slot, file, ready)} />
           {ready ? <FileButton label="+ הוסף קובץ נוסף" quiet onFile={(file) => onUpload(slot, file, false)} /> : null}
           {onLoadBlank && ready ? (
             <Button type="button" variant="outline" disabled={loadingBlank} onClick={() => void onLoadBlank()}>
-              {loadingBlank ? "טוען את הטופס…" : "טען טופס בל/6101 אוטומטית"}
+              {loadingBlank ? "טוען את הטופס…" : loadLabel}
             </Button>
           ) : null}
         </div>
