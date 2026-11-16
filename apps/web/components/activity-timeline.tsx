@@ -25,6 +25,7 @@ const LABELS: Record<string, string> = {
   signed: "טופס נחתם דיגיטלית",
   case_reopened: "תיק נפתח מחדש לתיקון",
   archive_exported: "תיק יוצא לארכיון ZIP",
+  internal_note_added: "הערה פנימית נוספה לתיק",
   signing_link_revoked: "קישור חתימה בוטל",
   signature_invalidated: "החתימה בוטלה",
 };

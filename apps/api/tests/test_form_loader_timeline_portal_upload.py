@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
 from app.domain.archive import timeline_metadata
-from tests.support import authenticate
+from tests.support import SignedOut, authenticate
 from tests.test_bl6101_sanity_drill import (
     _ID,
     _VALUES,
@@ -446,7 +446,7 @@ def test_another_organization_cannot_load_a_form_read_the_timeline_or_be_reached
     read = client.get(f"/cases/{case_id}/timeline", headers=headers)
     assert read.status_code == 404, read.text
     assert "action" not in read.text
-    with TestClient(client.app) as anonymous:
+    with SignedOut(client) as anonymous:
         assert anonymous.post(f"/cases/{case_id}/load-default-form").status_code == 401
         assert anonymous.get(f"/cases/{case_id}/timeline").status_code == 401
     assert client.get(f"/cases/{case_id}").json() == before

@@ -4,6 +4,7 @@ import type { CaseProgressEvent, CaseWorkspace, IntakeSummary } from "@docketai/
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ActivityTimeline } from "@/components/activity-timeline";
+import { InternalNotes } from "@/components/internal-notes";
 import { AuditCard } from "@/components/audit-card";
 import { FieldVerification } from "@/components/field-verification";
 import { FilingSlots } from "@/components/filing-slots";
@@ -16,6 +17,7 @@ import { SignerLinkCard } from "@/components/signer-link-card";
 import { SourceCompare } from "@/components/source-compare";
 import { SigningModal } from "@/components/signing-modal";
 import { StatusPill } from "@/components/status-pill";
+import { WhatsAppReminder } from "@/components/whatsapp-reminder";
 import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
 import { OfficeBar } from "@/components/office-bar";
@@ -361,6 +363,14 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
               פתיחת תיק מחדש לתיקון
             </Button>
           ) : null}
+          {tone === "awaiting" ? (
+            <WhatsAppReminder
+              className="w-full"
+              clientName={workspace.case.client_name || workspace.case.name}
+              phone={workspace.field_values.phone ?? ""}
+              explain
+            />
+          ) : null}
         </div>
       </header>
 
@@ -475,6 +485,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
         </div>
       </div>
       <div className="mt-5 grid gap-5">
+        <InternalNotes caseId={caseId} />
         <ActivityTimeline caseId={caseId} />
         <ReadingPanel workspace={workspace} />
       </div>

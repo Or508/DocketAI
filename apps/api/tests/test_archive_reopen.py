@@ -19,7 +19,7 @@ from app.db.session import session_scope
 from app.domain.archive import audit_entry, source_name
 from app.models.audit_log import AuditLog
 from app.models.signing_link import SigningLink
-from tests.support import authenticate
+from tests.support import SignedOut, authenticate
 from tests.test_case_forms import _office_form
 from tests.test_portal import _PNG, _auth, _ready, _token
 
@@ -442,7 +442,7 @@ def test_another_organization_cannot_export_or_reopen(client: TestClient, tmp_pa
         assert response.json() == client.get(f"/cases/{UUID(int=0)}/archive").json()
 
     # No session at all is refused before the case is looked up.
-    with TestClient(client.app) as anonymous:
+    with SignedOut(client) as anonymous:
         assert anonymous.get(f"/cases/{case_id}/archive").status_code == 401
         assert anonymous.post(f"/cases/{case_id}/reopen").status_code == 401
 

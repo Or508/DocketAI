@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { StatusPill } from "@/components/status-pill";
+import { WhatsAppReminder } from "@/components/whatsapp-reminder";
 import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ function bucketOf(tone: FolderTone): Exclude<Bucket, "all"> {
 type Card = {
   item: CaseRead;
   tone: FolderTone;
+  phone: string;
   docsDone: number;
   docsTotal: number;
   fieldsDone: number;
@@ -53,6 +55,7 @@ export function Dashboard() {
   const [bucket, setBucket] = useState<Bucket>("all");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +112,41 @@ export function Dashboard() {
     }
   }
 
+  async function exportCsv() {
+    setExporting(true);
+    setActionError(null);
+    try {
+      const response = await fetch("/api/analytics/export.csv", { cache: "no-store" });
+      if (response.status === 401) {
+        window.location.assign(`/login?next=${encodeURIComponent("/cases")}`);
+        return;
+      }
+      if (!response.ok) {
+        let message = response.statusText;
+        try {
+          message = detailFrom(await response.json());
+        } catch {
+          message = response.statusText;
+        }
+        throw new ApiError(message || "Request failed", response.status);
+      }
+      const blob = await response.blob();
+      const match = /filename="?([^";]+)"?/i.exec(response.headers.get("Content-Disposition") ?? "");
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = match?.[1] || "analytics.csv";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (reason) {
+      setActionError(hebrewOfficeError(reason));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function deleteDraft(card: Card) {
     const label = card.item.client_name || card.item.name;
     if (!window.confirm(`למחוק את תיק הטיוטה של ${label}? התיק והקבצים שבו יימחקו.`)) return;
@@ -162,6 +200,17 @@ export function Dashboard() {
             <a className="text-tide underline" href="/verify">
               אימות חותם ציבורי (/verify)
             </a>
+            <a className="text-tide underline" href="/analytics">
+              דוחות ואנליטיקה (/analytics)
+            </a>
+            <button
+              type="button"
+              className="inline-flex h-10 items-center rounded-md border-2 border-ink/25 bg-white px-3 text-sm font-semibold text-ink"
+              disabled={exporting}
+              onClick={() => void exportCsv()}
+            >
+              {exporting ? "מייצא…" : "ייצוא לאקסל (CSV)"}
+            </button>
           </nav>
         </div>
       </header>
@@ -248,6 +297,7 @@ export function Dashboard() {
                   busy={actingId === card.item.id}
                   onDownload={() => void downloadArchive(card)}
                   onDelete={card.tone === "done" || card.tone === "awaiting" ? undefined : () => void deleteDraft(card)}
+                  remind={card.tone === "awaiting"}
                 />
               ))
             )}
@@ -263,11 +313,13 @@ function FolderCard({
   busy,
   onDownload,
   onDelete,
+  remind,
 }: {
   card: Card;
   busy: boolean;
   onDownload: () => void;
   onDelete?: () => void;
+  remind?: boolean;
 }) {
   const docPct = card.docsTotal ? Math.round((card.docsDone / card.docsTotal) * 100) : 0;
   const fieldPct = card.fieldsTotal ? Math.round((card.fieldsDone / card.fieldsTotal) * 100) : 0;
@@ -300,6 +352,9 @@ function FolderCard({
       >
         הורד ZIP
       </button>
+      {remind ? (
+        <WhatsAppReminder clientName={card.item.client_name || card.item.name} phone={card.phone} />
+      ) : null}
       {onDelete ? (
         <button
           type="button"
@@ -334,7 +389,7 @@ function Meter({ label, done, total, pct }: { label: string; done: number; total
 function toCard(item: CaseRead, workspace: CaseWorkspace | null): Card {
   if (!workspace) {
     const tone = item.status === "signed" ? "done" : item.status === "filling" ? "awaiting" : item.status === "ready_for_review" ? "review" : "missing";
-    return { item, tone, docsDone: item.document_count, docsTotal: Math.max(item.document_count, 1), fieldsDone: 0, fieldsTotal: 0 };
+    return { item, tone, phone: "", docsDone: item.document_count, docsTotal: Math.max(item.document_count, 1), fieldsDone: 0, fieldsTotal: 0 };
   }
   const docsTotal = workspace.process.required_documents.reduce((sum, document) => sum + document.min_count, 0);
   const docsDone = docsTotal - workspace.gap.missing.reduce((sum, document) => sum + Math.max(document.required_count - document.found_count, 0), 0);
@@ -342,6 +397,7 @@ function toCard(item: CaseRead, workspace: CaseWorkspace | null): Card {
   const fieldsDone = fields.filter((field) => (workspace.field_values[field.key] ?? "").trim()).length;
   return {
     item,
+    phone: workspace.field_values.phone ?? "",
     tone: folderFromWorkspace(workspace),
     docsDone: Math.max(docsDone, 0),
     docsTotal,

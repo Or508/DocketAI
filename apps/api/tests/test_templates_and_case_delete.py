@@ -13,7 +13,7 @@ pytest.importorskip("PIL")
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
-from tests.support import authenticate
+from tests.support import SignedOut, authenticate
 from tests.test_bl6101_sanity_drill import _auth, _bl_form, _open, _ready, _sign_body, _sources, _token
 
 _BL_TITLE = "בל/6101 – דיווח רב-שנתי לביטוח לאומי"
@@ -200,7 +200,7 @@ def test_case_counts_follow_the_callers_own_office(client: TestClient, tmp_path:
     assert _templates(client, headers)["bl_6101"]["case_counts"] == {"total": 1, "filling": 1, "signed": 0}
     assert _templates(client)["bl_6101"]["case_counts"]["total"] == 3
 
-    with TestClient(client.app) as anonymous:
+    with SignedOut(client) as anonymous:
         assert anonymous.get("/templates").status_code == 401
 
 
@@ -281,7 +281,7 @@ def test_another_organization_cannot_delete_a_case(client: TestClient, tmp_path:
     hidden = client.delete(f"/cases/{case_id}", headers=headers)
     assert hidden.status_code == 404, hidden.text
     assert hidden.json() == client.delete("/cases/00000000-0000-0000-0000-000000000000").json()
-    with TestClient(client.app) as anonymous:
+    with SignedOut(client) as anonymous:
         assert anonymous.delete(f"/cases/{case_id}").status_code == 401
 
     assert client.get(f"/cases/{case_id}").status_code == 200

@@ -30,6 +30,7 @@ _SAFE_KEYS = frozenset(
         "form_pdf_sha256",
         "link_id",
         "needs_human_review",
+        "note_id",
         "reader",
         "revoke_reason",
         "revoked_links",

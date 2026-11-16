@@ -61,6 +61,7 @@ from app.domain.signing_links import as_utc, review_digest
 from app.domain.text_layout import contains_hebrew
 from app.models.audit_log import AuditLog
 from app.models.case import Case
+from app.models.case_note import CaseNote
 from app.models.document import Document
 from app.models.process_definition import ProcessDefinition
 from app.models.signing_link import SigningLink
@@ -88,6 +89,7 @@ from app.schemas.gap import (
     UnboundAnchor,
 )
 from app.schemas.process import DocumentTypeSpec, FieldSource, FieldSpec, ProcessRead, ValueSource
+from app.schemas.notes import NoteRead
 from app.schemas.timeline import TimelineEvent
 from app.schemas.workspace import CaseWorkspace, FileRejection, UploadResult
 from app.services.chat_collector import OPENING, ChatTurn
@@ -1182,6 +1184,7 @@ class CaseService:
         documents = len(case.documents)
         await self.session.execute(delete(AuditLog).where(AuditLog.case_id == case.id))
         await self.session.execute(delete(SigningLink).where(SigningLink.case_id == case.id))
+        await self.session.execute(delete(CaseNote).where(CaseNote.case_id == case.id))
         await self.session.delete(case)
         await self.session.commit()
         await self._delete_objects(sorted(keys))
@@ -1275,6 +1278,33 @@ class CaseService:
             )
         )
         await self.session.commit()
+
+    async def list_notes(self, case_id: uuid.UUID) -> list[NoteRead]:
+        """The office's own notes on a case, oldest first. No signer route reads these."""
+        case = await self._get_case(case_id)
+        rows = (
+            await self.session.scalars(
+                select(CaseNote).where(CaseNote.case_id == case.id).order_by(CaseNote.created_at, CaseNote.id)
+            )
+        ).all()
+        return [_note_read(row) for row in rows]
+
+    async def add_note(self, case_id: uuid.UUID, body: str, author_email: str) -> NoteRead:
+        case = await self._get_case(case_id)
+        note = CaseNote(case_id=case.id, author_email=author_email, body=body)
+        self.session.add(note)
+        await self.session.flush()
+        # The audit row says a note was written and by whom, never what it says.
+        self.session.add(
+            AuditLog(
+                case_id=case.id,
+                action=AuditAction.INTERNAL_NOTE_ADDED,
+                actor=self.scope.actor,
+                new_value={"note_id": str(note.id)},
+            )
+        )
+        await self.session.commit()
+        return _note_read(note)
 
     async def timeline(self, case_id: uuid.UUID) -> list[TimelineEvent]:
         case = await self._get_case(case_id)
@@ -1971,6 +2001,16 @@ def _drawer_role(role: str | None) -> str | None:
     if chosen not in {"evidence", "form"}:
         raise BadRequestError("A file is either evidence or a form.")
     return chosen
+
+
+def _note_read(note: CaseNote) -> NoteRead:
+    return NoteRead(
+        id=note.id,
+        case_id=note.case_id,
+        author_email=note.author_email,
+        body=note.body,
+        created_at=as_utc(note.created_at) or utcnow(),
+    )
 
 
 def _is_stalled(document: Document) -> bool:

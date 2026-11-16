@@ -8,12 +8,14 @@ from starlette.background import BackgroundTask
 from app.api.downloads import content_disposition
 from app.core.container import Container
 from app.domain.certificate import SignerContext, clean_ip, clean_user_agent
-from app.core.deps import get_case_service, get_container
+from app.core.deps import current_user, get_case_service, get_container
 from app.db.session import get_session
 from app.schemas.case import CaseCreate, CaseRead
 from app.schemas.chat import ChatRequest, FieldUpdateRequest
 from app.schemas.forms import DocumentRoleRead, DocumentRoleUpdate, FillReport, IntakeSummary
 from app.schemas.gap import FillAndSignRequest, GapReport, ManualClassifyRequest
+from app.models.user import User
+from app.schemas.notes import NoteCreate, NoteRead
 from app.schemas.timeline import TimelineEvent
 from app.schemas.workspace import CaseWorkspace, UploadResult
 from app.services.case_service import CaseService
@@ -307,3 +309,21 @@ async def case_timeline(
     service: CaseService = Depends(get_case_service),
 ) -> list[TimelineEvent]:
     return await service.timeline(case_id)
+
+
+@router.get("/{case_id}/notes", response_model=list[NoteRead])
+async def list_notes(
+    case_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> list[NoteRead]:
+    return await service.list_notes(case_id)
+
+
+@router.post("/{case_id}/notes", response_model=NoteRead, status_code=201)
+async def add_note(
+    case_id: UUID,
+    payload: NoteCreate,
+    service: CaseService = Depends(get_case_service),
+    user: User = Depends(current_user),
+) -> NoteRead:
+    return await service.add_note(case_id, payload.body, user.email)

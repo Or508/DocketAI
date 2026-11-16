@@ -14,7 +14,7 @@ from app.core.config import get_settings
 from app.db.session import session_scope
 from app.models.case import Case
 from app.services.verify_service import mask_name, normalize_code
-from tests.support import authenticate
+from tests.support import SignedOut, authenticate
 from tests.test_portal import _ANSWERS, _PNG, _auth, _ready, _token
 
 _SIGN = {"signature_png_base64": _PNG, "field_values": {}, "consent": True}
@@ -73,9 +73,9 @@ def _signed(client: TestClient, tmp_path: Path) -> tuple[str, dict, bytes]:
     return case_id, signed.json()["case"]["audit"], pdf
 
 
-def _public(client: TestClient) -> TestClient:
+def _public(client: TestClient) -> SignedOut:
     """A caller with no office session and no signing link."""
-    return TestClient(client.app)
+    return SignedOut(client)
 
 
 def test_a_valid_seal_is_confirmed_to_anyone_without_personal_details(client: TestClient, tmp_path: Path) -> None:

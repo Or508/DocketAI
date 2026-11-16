@@ -69,3 +69,33 @@ def authenticate(
     if set_header:
         client.headers["Authorization"] = f"Bearer {body['token']}"
     return body
+
+
+class SignedOut:
+    """The same client with no office session.
+
+    A second TestClient on the same app starts the app a second time on another event
+    loop, and its shutdown can hang. This sends the request through the one client.
+    """
+
+    def __init__(self, client: TestClient) -> None:
+        self._client = client
+
+    def __enter__(self) -> "SignedOut":
+        return self
+
+    def __exit__(self, *_exc: object) -> bool:
+        return False
+
+    def request(self, method: str, url: str, **kwargs):
+        headers = {"Authorization": "", **(kwargs.pop("headers", None) or {})}
+        return self._client.request(method, url, headers=headers, **kwargs)
+
+    def get(self, url: str, **kwargs):
+        return self.request("GET", url, **kwargs)
+
+    def post(self, url: str, **kwargs):
+        return self.request("POST", url, **kwargs)
+
+    def delete(self, url: str, **kwargs):
+        return self.request("DELETE", url, **kwargs)

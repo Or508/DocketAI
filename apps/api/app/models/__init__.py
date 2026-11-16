@@ -1,5 +1,6 @@
 from app.models.audit_log import AuditLog
 from app.models.case import Case
+from app.models.case_note import CaseNote
 from app.models.document import Document
 from app.models.organization import Organization
 from app.models.process_definition import ProcessDefinition
@@ -10,6 +11,7 @@ from app.models.user_session import UserSession
 __all__ = [
     "AuditLog",
     "Case",
+    "CaseNote",
     "Document",
     "Organization",
     "ProcessDefinition",
