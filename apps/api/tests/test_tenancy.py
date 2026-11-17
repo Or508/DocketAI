@@ -91,6 +91,8 @@ def test_another_organization_gets_404_and_changes_nothing(client: TestClient, t
         ("GET", f"/cases/{case_id}/archive", None, None),
         ("POST", f"/cases/{case_id}/reopen", None, None),
         ("POST", f"/cases/{case_id}/load-default-form", None, None),
+        ("GET", f"/cases/{case_id}/integrity", None, None),
+        ("POST", f"/cases/{case_id}/revoke-link", None, None),
         ("POST", f"/cases/{case_id}/smart-upload", None, {"files": ("a.pdf", b"%PDF-1.4", "application/pdf")}),
         ("GET", f"/cases/{case_id}/timeline", None, None),
         ("GET", f"/cases/{case_id}/notes", None, None),

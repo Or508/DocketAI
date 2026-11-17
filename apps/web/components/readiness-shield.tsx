@@ -2,16 +2,35 @@
 
 import type { CaseWorkspace, FieldSpec, IntakeSummary } from "@docketai/shared-types";
 import { israeliIdStatus } from "@docketai/shared-types";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { blankFormButton, FIELD_LABEL, processTypeOf } from "@/lib/filing";
 
+type IntegrityCheck = {
+  code: string;
+  label_he: string;
+  status: "pass" | "warn" | "fail";
+  detail_he: string;
+  field_key: string | null;
+  drawer_type: string | null;
+};
+
+type IntegrityReport = {
+  case_id: string;
+  status: "pass" | "warn" | "block";
+  score: number;
+  checks: IntegrityCheck[];
+};
+
 export function ReadinessShield({
+  caseId,
   workspace,
   intake,
   loadingForm,
   onLoadBlank,
 }: {
+  caseId: string;
   workspace: CaseWorkspace;
   intake: IntakeSummary | null;
   loadingForm: boolean;
@@ -34,6 +53,7 @@ export function ReadinessShield({
   const fieldScore = fields.length ? Math.round((validFields / fields.length) * 50) : 50;
   const score = Math.max(0, Math.min(100, formScore + drawerScore + fieldScore));
   const ready = formLoaded && filledDrawers.length === drawers.length && problems.length === 0;
+  const integrity = useIntegrity(caseId, workspace.case.updated_at);
 
   return (
     <section className="rounded-lg border-2 border-ink/15 bg-white p-4 shadow-card" aria-label="בדיקת תקינות ומוכנות לפני שליחה לחתימה">
@@ -87,6 +107,7 @@ export function ReadinessShield({
             <p className="mt-1 font-semibold text-[#0d4a2e]">✓ ת״ז ונייד תקינים, והשדות מולאו</p>
           )}
         </li>
+        {integrity ? <IntegrityChecks report={integrity} /> : null}
       </ul>
       <div className="mt-4">
         <p className="mb-1 flex justify-between text-sm font-semibold">
@@ -102,6 +123,69 @@ export function ReadinessShield({
       </div>
     </section>
   );
+}
+
+function useIntegrity(caseId: string, revision: string) {
+  const [report, setReport] = useState<IntegrityReport | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/cases/${caseId}/integrity`, { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return (await response.json()) as IntegrityReport;
+      })
+      .then((next) => {
+        if (!cancelled) setReport(next);
+      })
+      .catch(() => {
+        if (!cancelled) setReport(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [caseId, revision]);
+  return report;
+}
+
+function IntegrityChecks({ report }: { report: IntegrityReport }) {
+  const tone = report.status === "pass" ? "text-[#0d4a2e]" : report.status === "warn" ? "text-[#4a3208]" : "text-clay";
+  const mark = report.status === "pass" ? "תקין" : report.status === "warn" ? "נדרשת בדיקה" : "חסום";
+  return (
+    <li className="rounded-md border-2 border-ink/10 px-3 py-3">
+      <p className="font-semibold">בדיקות השרת</p>
+      <p className={`mt-1 font-semibold ${tone}`}>
+        {mark} · ציון שרת {report.score}%
+      </p>
+      <ul className="mt-2 grid gap-2">
+        {report.checks.map((check) => (
+          <li key={check.code}>
+            <button
+              type="button"
+              className={`w-full rounded-md border-2 px-2 py-2 text-start text-xs font-semibold ${checkTone(check.status)}`}
+              onClick={() => openCheck(check)}
+            >
+              <span className="block">
+                {check.status === "pass" ? "✓" : check.status === "warn" ? "⚠" : "✕"} {check.label_he}
+                {check.code === "cross_doc_consistency" ? " · הצלבת מסמכים" : ""}
+              </span>
+              {check.detail_he ? <span className="mt-1 block font-medium">{check.detail_he}</span> : null}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </li>
+  );
+}
+
+function checkTone(status: IntegrityCheck["status"]) {
+  if (status === "pass") return "border-moss bg-[#e7f5ee] text-[#0d4a2e]";
+  if (status === "warn") return "border-amberink bg-[#f6e4c4] text-[#4a3208]";
+  return "border-clay bg-[#fde8e4] text-clay";
+}
+
+function openCheck(check: IntegrityCheck) {
+  if (check.field_key) focusField(check.field_key);
+  else if (check.drawer_type) scrollToDrawers();
 }
 
 function fieldLabel(field: FieldSpec) {

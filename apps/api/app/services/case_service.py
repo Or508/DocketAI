@@ -56,7 +56,9 @@ from app.domain.enums import (
 from app.domain.provenance import INTAKE_PROMPT_EN, INTAKE_PROMPT_HE, why_items
 from app.domain.readiness import signing_blockers
 from app.domain.slot_reading import apply_proposals, read_document, retract_document
+from app.domain.integrity import CROSS_CHECKED, ID_KEYS, CaseFacts, FiledDocument, run_checks
 from app.domain.smart_routing import route_document
+from app.schemas.integrity import IntegrityReport
 from app.domain.storage_keys import document_key, signed_keys
 from app.domain.signing_links import as_utc, review_digest
 from app.domain.text_layout import contains_hebrew
@@ -1189,6 +1191,103 @@ class CaseService:
         await self.session.commit()
         await self._delete_objects(sorted(keys))
         logger.info("Case %s deleted by %s with %d files", case_id, self.scope.actor, documents)
+
+    async def integrity(self, case_id: uuid.UUID) -> IntegrityReport:
+        """Check the case against the fixed compliance rules. Nothing is changed or recorded."""
+        case = await self._get_case(case_id)
+        process = case.process_definition
+        layout = process.layout or {}
+        required, optional = _document_specs(process)
+        labels = {spec.type_key: spec.label_he or spec.label for spec in required + optional}
+        fields = _field_specs(process)
+        values = {str(key): str(value).strip() for key, value in (case.field_values or {}).items()}
+        gap = self._gap(case)
+        forms = [
+            document
+            for document in sorted(case.documents, key=lambda item: (item.created_at, str(item.id)))
+            if document.role == "form" and document.status != DocumentStatus.FAILED
+        ]
+        id_key = next((spec.key for spec in fields if spec.key in ID_KEYS), None)
+        filed: list[FiledDocument] = []
+        for document in sorted(case.documents, key=lambda item: (item.created_at, str(item.id))):
+            if document.role != "evidence" or document.document_type not in CROSS_CHECKED:
+                continue
+            if document.status != DocumentStatus.CLASSIFIED and (
+                document.classification_source != ClassificationSource.HUMAN
+                or document.status == DocumentStatus.FAILED
+            ):
+                continue
+            report = document.reading_report if isinstance(document.reading_report, dict) else {}
+            filed.append(
+                FiledDocument(
+                    document_type=document.document_type,
+                    label_he=labels.get(document.document_type, document.document_type),
+                    text=document.extracted_text or "",
+                    conflicting_slots=tuple(
+                        str(item.get("slot_key")) for item in report.get("conflicts") or [] if isinstance(item, dict)
+                    ),
+                    id_mismatch=report.get("blocked") == "id_mismatch",
+                )
+            )
+        facts = CaseFacts(
+            form_count=len(forms),
+            form_bound=len({str(anchor.get("slot_key")) for anchor in _bound_anchors(forms[0])}) if forms else 0,
+            form_required=layout.get("sign_source") == "uploaded_form",
+            missing_drawers=[(item.type_key, labels.get(item.type_key, item.label)) for item in gap.missing],
+            waiting_files=len(gap.unrecognized) + len(gap.in_progress),
+            required_drawer_count=len(required),
+            required_fields=[
+                (spec.key, spec.label_he or spec.label, bool(values.get(spec.key))) for spec in fields if spec.required
+            ],
+            id_key=id_key,
+            id_value=values.get(id_key, "") if id_key else "",
+            cross_checked_drawers=[key for key in CROSS_CHECKED if key in labels],
+            documents=filed,
+        )
+        verdict, score, checks = run_checks(facts)
+        return IntegrityReport(case_id=case.id, status=verdict, score=score, checks=checks)  # type: ignore[arg-type]
+
+    async def revoke_link(self, case_id: uuid.UUID) -> CaseWorkspace:
+        """Cancel the open signing link of an unsigned case, so the clerk can correct it.
+
+        The link stops working at once. The case goes back to filling; a signed case is refused.
+        """
+        case = await self._locked_case(case_id)
+        if case is None:
+            raise NotFoundError("Case not found.")
+        if case.status == CaseStatus.SIGNED:
+            await self.session.rollback()
+            raise ConflictError("This case is already signed. A signed seal cannot be revoked.")
+        result = await self.session.execute(
+            update(SigningLink)
+            .where(
+                SigningLink.case_id == case.id,
+                SigningLink.revoked_at.is_(None),
+                SigningLink.completed_at.is_(None),
+            )
+            .values(revoked_at=utcnow(), revoke_reason="office")
+        )
+        if not result.rowcount:
+            await self.session.rollback()
+            raise NotFoundError("There is no open signing link.")
+        previous = case.status
+        # Files still being read keep the case in processing; it reaches filling when they are done.
+        if case.status != CaseStatus.PROCESSING:
+            case.status = CaseStatus.FILLING
+        self._refresh_pipeline(case)
+        case.updated_at = utcnow()
+        self.session.add(
+            AuditLog(
+                case_id=case.id,
+                action=AuditAction.SIGNING_LINK_REVOKED,
+                actor=self.scope.actor,
+                previous_value={"status": previous.value},
+                new_value={"revoke_reason": "office", "revoked_links": int(result.rowcount), "status": case.status.value},
+            )
+        )
+        await self.session.commit()
+        self.session.expire_all()
+        return self._workspace(await self._get_case(case_id))
 
     async def smart_upload(self, case_id: uuid.UUID, files: list[UploadFile]) -> SmartUploadResult:
         """File a mixed drop of documents: each goes to the drawer its name and text point to.

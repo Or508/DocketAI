@@ -477,6 +477,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
             ) : null}
           </section>
           <ReadinessShield
+            caseId={caseId}
             workspace={workspace}
             intake={intake}
             loadingForm={loadingForm}
@@ -488,8 +489,14 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
             phone={workspace.field_values.phone ?? ""}
             email={workspace.field_values.email ?? ""}
             signed={workspace.case.status === "signed"}
+            waiting={tone === "awaiting" || workspace.gap.pipeline.stage === "ready_for_signature"}
             verificationId={workspace.case.audit.signer_verification_id}
             processKey={processType}
+            onRevoked={(next) => {
+              setWorkspace(next);
+              setNotice("קישור החתימה בוטל והתיק חזר לעריכה.");
+              void refresh();
+            }}
           />
           <div className="rounded-lg border-2 border-ink/15 bg-white p-4">
             <Button type="button" variant="outline" disabled={!workspace.ready_to_sign || busy} onClick={() => setSigning(true)}>

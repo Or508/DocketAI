@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.routes import (
     analytics,
+    audit,
     auth,
     cases,
     clients,
@@ -23,6 +24,7 @@ api_router.include_router(cases.router, dependencies=_office)
 api_router.include_router(templates.router, dependencies=_office)
 api_router.include_router(analytics.router, dependencies=_office)
 api_router.include_router(clients.router, dependencies=_office)
+api_router.include_router(audit.router, dependencies=_office)
 api_router.include_router(signing_links.router, dependencies=_office)
 api_router.include_router(portal.router)
 api_router.include_router(verify.router)

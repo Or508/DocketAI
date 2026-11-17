@@ -1,6 +1,6 @@
 "use client";
 
-import type { SigningLinkRead } from "@docketai/shared-types";
+import type { CaseWorkspace, SigningLinkRead } from "@docketai/shared-types";
 import { useCallback, useEffect, useState } from "react";
 
 import { SigningQr } from "@/components/signing-qr";
@@ -50,16 +50,20 @@ export function SignerLinkCard({
   phone,
   email,
   signed,
+  waiting,
   verificationId,
   processKey,
+  onRevoked,
 }: {
   caseId: string;
   clientName: string;
   phone: string;
   email: string;
   signed: boolean;
+  waiting: boolean;
   verificationId: string | null;
   processKey: string;
+  onRevoked?: (workspace: CaseWorkspace) => void;
 }) {
   const [link, setLink] = useState<SigningLinkRead | null>(null);
   const [freshUrl, setFreshUrl] = useState<string | null>(null);
@@ -107,12 +111,22 @@ export function SignerLinkCard({
     setBusy(true);
     setNote(null);
     try {
-      await api.revokeSigningLink(caseId);
+      const response = await fetch(`/api/cases/${caseId}/revoke-link`, { method: "POST" });
+      if (response.status === 401) {
+        window.location.assign(`/login?next=${encodeURIComponent(`/cases/${caseId}`)}`);
+        return;
+      }
+      if (!response.ok) {
+        setNote(response.status === 404 ? "אין קישור חתימה פתוח." : "לא ניתן לבטל את הקישור.");
+        return;
+      }
+      const workspace = (await response.json()) as CaseWorkspace;
       setFreshUrl(null);
       forgetUrl(caseId);
-      await load();
-    } catch (error) {
-      setNote(hebrewOfficeError(error));
+      setLink(null);
+      onRevoked?.(workspace);
+    } catch {
+      setNote("לא ניתן לבטל את הקישור.");
     } finally {
       setBusy(false);
     }
@@ -206,9 +220,9 @@ export function SignerLinkCard({
           <Button type="button" className="w-full" onClick={() => void create()} disabled={busy}>
             {freshUrl ? "קישור חדש" : "יצירת קישור לחתימה"}
           </Button>
-          {link?.state === "open" ? (
+          {link?.state === "open" || waiting ? (
             <Button type="button" variant="danger" onClick={() => void revoke()} disabled={busy}>
-              ביטול הקישור
+              בטל קישור חתימה והחזר לעריכה
             </Button>
           ) : null}
         </div>

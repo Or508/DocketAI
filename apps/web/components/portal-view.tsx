@@ -28,6 +28,7 @@ function derivedStep(view: PortalView): Step {
 export function PortalViewScreen({ token }: { token: string }) {
   const [view, setView] = useState<PortalView | null>(null);
   const [inactive, setInactive] = useState(false);
+  const [revoked, setRevoked] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [signing, setSigning] = useState(false);
@@ -40,9 +41,17 @@ export function PortalViewScreen({ token }: { token: string }) {
       const next = await portalApi.view(token);
       setView(next);
       setInactive(false);
+      setRevoked(false);
     } catch (error) {
-      if (error instanceof ApiError && (error.status === 404 || error.status === 410)) {
+      if (error instanceof ApiError && error.status === 410) {
+        setRevoked(true);
+        setInactive(false);
+        setView(null);
+        return;
+      }
+      if (error instanceof ApiError && error.status === 404) {
         setInactive(true);
+        setRevoked(false);
         setView(null);
         return;
       }
@@ -91,6 +100,14 @@ export function PortalViewScreen({ token }: { token: string }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (revoked) {
+    return (
+      <main className="mx-auto max-w-lg px-4 py-16">
+        <h1 className="font-serif text-3xl">קישור החתימה בוטל על ידי המשרד לצורך עדכון פרטים. אנא פנה למשרד לקבלת קישור מעודכן.</h1>
+      </main>
+    );
   }
 
   if (inactive) {

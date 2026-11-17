@@ -13,6 +13,7 @@ from app.db.session import get_session
 from app.schemas.case import CaseCreate, CaseRead
 from app.schemas.chat import ChatRequest, FieldUpdateRequest
 from app.schemas.forms import DocumentRoleRead, DocumentRoleUpdate, FillReport, IntakeSummary
+from app.schemas.integrity import IntegrityReport
 from app.schemas.gap import FillAndSignRequest, GapReport, ManualClassifyRequest
 from app.models.user import User
 from app.schemas.notes import NoteCreate, NoteRead
@@ -303,6 +304,24 @@ async def reopen_case(
     service: CaseService = Depends(get_case_service),
 ) -> CaseWorkspace:
     return await service.reopen(case_id)
+
+
+@router.get("/{case_id}/integrity", response_model=IntegrityReport)
+async def case_integrity(
+    case_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> IntegrityReport:
+    """The compliance report of this case: form, drawers, ID number, document agreement and fields."""
+    return await service.integrity(case_id)
+
+
+@router.post("/{case_id}/revoke-link", response_model=CaseWorkspace)
+async def revoke_link(
+    case_id: UUID,
+    service: CaseService = Depends(get_case_service),
+) -> CaseWorkspace:
+    """Cancel the open signing link of an unsigned case and hand the case back to the clerk."""
+    return await service.revoke_link(case_id)
 
 
 @router.post("/{case_id}/load-default-form", response_model=CaseWorkspace)

@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/templates", label: "קטלוג טפסים (/templates)", active: (path: string) => path === "/templates" || path.startsWith("/templates/") },
   { href: "/analytics", label: "דוחות ואנליטיקה (/analytics)", active: (path: string) => path === "/analytics" || path.startsWith("/analytics/") },
   { href: "/verify", label: "אימות חותם (/verify)", active: (path: string) => path === "/verify" || path.startsWith("/verify/") },
+  { href: "/audit", label: "יומן אבטחה (/audit)", active: (path: string) => path === "/audit" || path.startsWith("/audit/") },
 ] as const;
 
 export function OfficeTopNav() {

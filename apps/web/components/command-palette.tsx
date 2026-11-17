@@ -20,6 +20,7 @@ const SECTIONS = [
   { href: "/templates", label: "קטלוג טפסים (/templates)" },
   { href: "/analytics", label: "דוחות ואנליטיקה (/analytics)" },
   { href: "/verify", label: "אימות חותם (/verify)" },
+  { href: "/audit", label: "יומן אבטחה (/audit)" },
 ] as const;
 
 const QUICK = [
