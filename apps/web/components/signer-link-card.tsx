@@ -6,8 +6,10 @@ import { useCallback, useEffect, useState } from "react";
 import { SigningQr } from "@/components/signing-qr";
 import { Button } from "@/components/ui/button";
 import { ApiError, api } from "@/lib/api";
-import { israeliMobile, mailUrl, signedMessage, signingMessage, whatsAppUrl } from "@/lib/dispatch";
+import { israeliMobile, mailUrl, signedMessage, whatsAppUrl } from "@/lib/dispatch";
 import { dispatchFormTitle } from "@/lib/filing";
+import { applyOfficeTemplate } from "@/lib/office-settings";
+import { useOfficeSettings } from "@/lib/use-office-settings";
 import { hebrewOfficeError } from "@/lib/hebrew";
 
 const STORED_URL = "docket-sign-url:";
@@ -138,9 +140,12 @@ export function SignerLinkCard({
     return typeof value === "string" && value ? value : null;
   })();
   const signingUrl = reportedUrl || freshUrl || storedUrl(caseId);
+  const settings = useOfficeSettings();
   const mobile = israeliMobile(phone);
   const formTitle = dispatchFormTitle(processKey);
-  const readyText = signingUrl ? signingMessage(clientName, signingUrl, formTitle) : "";
+  const readyText = signingUrl
+    ? applyOfficeTemplate(settings.signingTemplate, { client_name: clientName, process_title: formTitle, link: signingUrl }, settings)
+    : "";
   const signedText = verificationId ? signedMessage(clientName, verificationId, signingUrl) : "";
   const open = link?.state === "open" && Boolean(signingUrl);
 

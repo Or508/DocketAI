@@ -24,6 +24,8 @@ import { Button } from "@/components/ui/button";
 import { OfficeBar } from "@/components/office-bar";
 import { OfficeTopNav } from "@/components/OfficeTopNav";
 import { ReadinessShield } from "@/components/readiness-shield";
+import { CASE_PRINT_CSS, CaseCover } from "@/components/case-cover";
+import { DocumentRequest } from "@/components/document-request";
 import { ApiError, api, downloadCaseArchive, filledFormUrl, signedDocumentUrl } from "@/lib/api";
 import { archiveFilename } from "@/lib/dispatch";
 import { FIELD_LABEL, blankFormNotice, dispatchFormTitle, folderFromWorkspace, formDrawerTitle, processLabel, processTypeOf } from "@/lib/filing";
@@ -349,6 +351,9 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
 
   return (
     <main className="mx-auto min-h-screen max-w-7xl px-5 py-6">
+      <style>{CASE_PRINT_CSS}</style>
+      <CaseCover workspace={workspace} intake={intake} tone={tone} />
+      <div className="no-print">
       <OfficeTopNav />
       <header className="mt-4 flex flex-wrap items-start justify-between gap-4 border-b-2 border-ink/15 pb-4">
         <div>
@@ -363,6 +368,9 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
           <StatusPill tone={tone} />
           <Button type="button" variant="outline" disabled={busy} onClick={() => void saveArchive()}>
             הורדת תיק מלא לארכיון (ZIP)
+          </Button>
+          <Button type="button" variant="outline" onClick={() => window.print()}>
+            הדפס דף תיק 🖨
           </Button>
           {workspace.case.status === "signed" ? (
             <Button type="button" variant="ghost" disabled={busy} onClick={() => void reopenCase()}>
@@ -390,7 +398,13 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
       {processing ? <PipelineBanner pipeline={workspace.gap.pipeline} /> : null}
 
       {workspace.case.status !== "signed" ? (
-        <div className="mt-6">
+        <div className="mt-6 grid gap-5">
+          <DocumentRequest
+            caseId={caseId}
+            clientName={workspace.case.client_name || workspace.case.name}
+            phone={workspace.field_values.phone ?? ""}
+            processTitle={dispatchFormTitle(processType)}
+          />
           <SmartDropzone
             caseId={caseId}
             onUploaded={(next, summary) => {
@@ -584,6 +598,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
           if (ok) setSigning(false);
         }}
       />
+      </div>
     </main>
   );
 }

@@ -48,7 +48,8 @@ class RoutedFile(BaseModel):
     role: str | None = None
     document_type: str | None = None
     drawer_label_he: str | None = None
-    matched_by: Literal["form", "filename", "content", "filename_and_content"] | None = None
+    # chosen: the drawer was named with the upload, not worked out from the file.
+    matched_by: Literal["form", "filename", "content", "filename_and_content", "chosen"] | None = None
     document_id: UUID | None = None
     status: str | None = None
     # The case already held this exact file; it was filed, not stored again.

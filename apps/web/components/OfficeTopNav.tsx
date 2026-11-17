@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/analytics", label: "דוחות ואנליטיקה (/analytics)", active: (path: string) => path === "/analytics" || path.startsWith("/analytics/") },
   { href: "/verify", label: "אימות חותם (/verify)", active: (path: string) => path === "/verify" || path.startsWith("/verify/") },
   { href: "/audit", label: "יומן אבטחה (/audit)", active: (path: string) => path === "/audit" || path.startsWith("/audit/") },
+  { href: "/settings", label: "הגדרות (/settings)", active: (path: string) => path === "/settings" || path.startsWith("/settings/") },
 ] as const;
 
 export function OfficeTopNav() {

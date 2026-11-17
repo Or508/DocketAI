@@ -45,6 +45,8 @@ const ACTION_NAMES: Record<string, string> = {
   client_vault_reused: "שימוש חוזר במסמכי הכספת",
   internal_note_added: "הערה פנימית נוספה",
   client_document_uploaded: "הלקוח העלה מסמך",
+  intake_link_created: "נוצר קישור להעלאת מסמכים עבור הלקוח",
+  client_intake_uploaded: "הלקוח העלה מסמכים מרחוק לתיק",
 };
 // The filters shown first; the rest follow in the order the office has used them.
 const PINNED = ["fill_and_sign", "smart_upload_completed", "client_vault_reused", "signing_link_revoked"];
@@ -76,6 +78,14 @@ const STAMP = new Intl.DateTimeFormat("he-IL", {
 
 function toLogin() {
   window.location.assign(`/login?next=${encodeURIComponent("/audit")}`);
+}
+
+function auditExportHref(action: string | null, query: string) {
+  const params = new URLSearchParams();
+  if (action) params.set("action", action);
+  if (query) params.set("q", query);
+  const search = params.toString();
+  return search ? `/api/audit/export.csv?${search}` : "/api/audit/export.csv";
 }
 
 function stamp(value: string): string {
@@ -165,13 +175,21 @@ export function AuditScreen() {
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
       <OfficeTopNav />
-      <header className="mt-4">
+      <header className="mt-4 flex flex-wrap items-end justify-between gap-4">
+        <div>
         <p className="text-sm font-semibold text-tide">ארון תיוק ובקרת מסמכים</p>
         <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl">יומן אבטחה, ציות ובקרת פעולות משרדית</h1>
         <p className="mt-3 max-w-2xl text-mist">
           כל פעולה שנעשתה בתיקי המשרד, מהחדשה לישנה: מי עשה, מתי ובאיזה תיק. היומן מציג מזהים וספירות בלבד, בלי הפרטים
           האישיים של הלקוחות.
         </p>
+        </div>
+        <a
+          href={auditExportHref(action, query)}
+          className="inline-flex h-10 items-center rounded-md bg-tide px-3 text-sm font-semibold text-white"
+        >
+          ייצוא יומן לאקסל (CSV)
+        </a>
       </header>
 
       {error ? (

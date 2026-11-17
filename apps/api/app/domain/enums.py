@@ -39,5 +39,7 @@ class AuditAction(str, Enum):
     DEFAULT_FORM_LOADED = "default_form_loaded"
     SMART_UPLOAD_COMPLETED = "smart_upload_completed"
     CLIENT_VAULT_REUSED = "client_vault_reused"
+    INTAKE_LINK_CREATED = "intake_link_created"
+    CLIENT_INTAKE_UPLOADED = "client_intake_uploaded"
     INTERNAL_NOTE_ADDED = "internal_note_added"
     CLIENT_DOCUMENT_UPLOADED = "client_document_uploaded"

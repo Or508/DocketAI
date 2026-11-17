@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     chat_stream_idle_timeout_seconds: float = Field(default=20, gt=0)
     public_web_url: str = "http://localhost:3000"
     signing_link_ttl_hours: int = 72
+    # How long a client's document intake link works. 0 means it does not expire.
+    intake_link_ttl_hours: int = Field(default=168, ge=0)
     signing_link_download_hours: int = 168
     signing_link_max_chat_turns: int = 40
     preflight_timeout_seconds: int = 20

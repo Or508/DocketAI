@@ -9,6 +9,7 @@ from app.domain.case_scope import CaseScope
 from app.models.user import User
 from app.services.auth_service import AuthService
 from app.services.case_service import CaseService
+from app.services.intake_service import IntakeService
 from app.services.portal_service import PortalService
 
 
@@ -57,6 +58,22 @@ def get_portal_service(
     container: Container = Depends(get_container),
 ) -> PortalService:
     return PortalService(session, container, CaseScope.system())
+
+
+def get_office_intake_service(
+    session: AsyncSession = Depends(get_session),
+    container: Container = Depends(get_container),
+    scope: CaseScope = Depends(office_scope),
+) -> IntakeService:
+    return IntakeService(session, container, scope)
+
+
+def get_intake_service(
+    session: AsyncSession = Depends(get_session),
+    container: Container = Depends(get_container),
+) -> IntakeService:
+    """For the client's intake link: the case is found by the link's token, not by office."""
+    return IntakeService(session, container, CaseScope.system())
 
 
 def public_scope() -> CaseScope:

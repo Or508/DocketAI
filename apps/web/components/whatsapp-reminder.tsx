@@ -1,9 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { israeliMobile, whatsAppUrl } from "@/lib/dispatch";
+import { applyOfficeTemplate, readOfficeSettings } from "@/lib/office-settings";
+import { useOfficeSettings } from "@/lib/use-office-settings";
 
 export function reminderMessage(clientName: string, formTitle: string) {
-  const name = clientName.trim() || "לקוח";
-  return `שלום ${name}, תזכורת ידידותית להשלמת החתימה הדיגיטלית על ${formTitle}. הטופס ממתין לחתימתך.`;
+  const settings = readOfficeSettings();
+  return applyOfficeTemplate(settings.reminderTemplate, { client_name: clientName, process_title: formTitle, link: "" }, settings);
 }
 
 export function WhatsAppReminder({
@@ -19,7 +21,9 @@ export function WhatsAppReminder({
   className?: string;
   explain?: boolean;
 }) {
+  const settings = useOfficeSettings();
   const mobile = israeliMobile(phone);
+  const text = applyOfficeTemplate(settings.reminderTemplate, { client_name: clientName, process_title: formTitle, link: "" }, settings);
   if (!mobile) {
     return (
       <div className={className}>
@@ -32,7 +36,7 @@ export function WhatsAppReminder({
   }
   return (
     <Button asChild className={className}>
-      <a href={whatsAppUrl(mobile, reminderMessage(clientName, formTitle))} target="_blank" rel="noopener noreferrer">
+      <a href={whatsAppUrl(mobile, text)} target="_blank" rel="noopener noreferrer">
         תזכורת ב-WhatsApp
       </a>
     </Button>

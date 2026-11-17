@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FIELD_LABEL, sourceBadge } from "@/lib/filing";
+import { useOfficeSettings } from "@/lib/use-office-settings";
 import { ApiError } from "@/lib/api";
 import { PHONE_BOXES_NOTE } from "@/lib/hebrew";
 
@@ -36,6 +37,7 @@ export function FieldVerification({
   sourceFor?: (fieldKey: string) => { id: string; name: string } | null;
   onViewSource?: (file: { id: string; name: string }) => void;
 }) {
+  const settings = useOfficeSettings();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const saveRef = useRef(onSave);
@@ -154,6 +156,7 @@ export function FieldVerification({
                   busy={busy}
                   source={sourceFor?.(field.key) ?? null}
                   onViewSource={onViewSource}
+                  showWarnings={settings.showChecksumWarnings}
                   onChange={(value) => change(field, value)}
                   onBlur={() => void commit(field)}
                 />
@@ -175,6 +178,7 @@ export function FieldVerification({
                 busy={busy}
                 source={sourceFor?.(field.key) ?? null}
                 onViewSource={onViewSource}
+                showWarnings={settings.showChecksumWarnings}
                 onChange={(value) => change(field, value)}
                 onBlur={() => void commit(field)}
               />
@@ -195,6 +199,7 @@ function FieldRow({
   busy,
   source,
   onViewSource,
+  showWarnings,
   onChange,
   onBlur,
 }: {
@@ -206,14 +211,16 @@ function FieldRow({
   busy: boolean;
   source: { id: string; name: string } | null;
   onViewSource?: (file: { id: string; name: string }) => void;
+  showWarnings: boolean;
   onChange: (value: string) => void;
   onBlur: () => void;
 }) {
   const idCheck = isIsraeliId(field) ? israeliIdStatus(value) : null;
   const phoneCheck = field.field_type === "phone" ? israeliMobileStatus(value) : "empty";
-  const checkLabel = idCheck?.status === "valid" || idCheck?.status === "invalid" ? idMessage(idCheck.status) : phoneLabel(phoneCheck);
+  const rawLabel = idCheck?.status === "valid" || idCheck?.status === "invalid" ? idMessage(idCheck.status) : phoneLabel(phoneCheck);
+  const checkLabel = showWarnings ? rawLabel : "";
   const checkTone = idCheck?.status === "valid" || phoneCheck === "valid" ? "valid" : "warn";
-  const hint = error || (checkLabel ? "" : idMessage(idCheck?.status));
+  const hint = error || (showWarnings && !checkLabel ? idMessage(idCheck?.status) : "");
   const waiting = badge === "ממתין להשלמת משרד";
   return (
     <label className="block text-sm" htmlFor={`field-${field.key}`}>

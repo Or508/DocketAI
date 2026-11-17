@@ -67,6 +67,7 @@ from app.models.case import Case
 from app.models.case_note import CaseNote
 from app.models.document import Document
 from app.models.process_definition import ProcessDefinition
+from app.models.intake_link import IntakeLink
 from app.models.signing_link import SigningLink
 from app.schemas.case import CaseAudit, CaseCertificate, CaseCreate, CaseRead
 from app.schemas.chat import ChatMessageRead, ChatRequest, FieldUpdateRequest
@@ -113,6 +114,7 @@ class ChatStart:
     stamp: str
 
 _CLIENT_DOCUMENT_CAP = 40
+_SMART_UPLOAD_LIMIT = 10
 # The names the signer's page uses for a drawer, and the catalog's own.
 CLIENT_DOCUMENT_TYPES = {
     "id_card": "id_copy",
@@ -1187,6 +1189,7 @@ class CaseService:
         await self.session.execute(delete(AuditLog).where(AuditLog.case_id == case.id))
         await self.session.execute(delete(SigningLink).where(SigningLink.case_id == case.id))
         await self.session.execute(delete(CaseNote).where(CaseNote.case_id == case.id))
+        await self.session.execute(delete(IntakeLink).where(IntakeLink.case_id == case.id))
         await self.session.delete(case)
         await self.session.commit()
         await self._delete_objects(sorted(keys))
@@ -1289,40 +1292,60 @@ class CaseService:
         self.session.expire_all()
         return self._workspace(await self._get_case(case_id))
 
-    async def smart_upload(self, case_id: uuid.UUID, files: list[UploadFile]) -> SmartUploadResult:
+    async def smart_upload(
+        self,
+        case_id: uuid.UUID,
+        files: list[UploadFile],
+        *,
+        limit: int = _SMART_UPLOAD_LIMIT,
+        from_client: bool = False,
+        document_type: str | None = None,
+        audit_action: AuditAction = AuditAction.SMART_UPLOAD_COMPLETED,
+        audit_actor: str | None = None,
+        audit_extra: dict[str, object] | None = None,
+    ) -> SmartUploadResult:
         """File a mixed drop of documents: each goes to the drawer its name and text point to.
 
         A file that is this process's form becomes the case form. A routed file replaces
         what sat in its drawer. A file nothing points anywhere is kept for the office to file.
         Everything is read before this returns.
+
+        A client's drop never becomes the case form, and may name the drawer of its one file.
         """
         if not files:
             raise BadRequestError("Choose at least one file.")
-        if len(files) > _SMART_UPLOAD_LIMIT:
-            raise BadRequestError(f"Drop at most {_SMART_UPLOAD_LIMIT} files at a time.")
+        if len(files) > limit:
+            raise BadRequestError(f"Drop at most {limit} files at a time.")
         case = await self._get_case(case_id)
         if case.status == CaseStatus.SIGNED:
             raise ConflictError("This case is already signed. Reopen it to change its files.")
+        if from_client and len(case.documents) + len(files) > _CLIENT_DOCUMENT_CAP:
+            raise ConflictError("This case holds too many files. Contact the office.")
         process = case.process_definition
         layout = process.layout or {}
         required, optional = _document_specs(process)
         labels = {spec.type_key: spec.label_he or spec.label for spec in required + optional}
         fields = _field_specs(process)
-        takes_form = layout.get("sign_source") == "uploaded_form" or _signs_loaded_form(layout)
+        takes_form = not from_client and (
+            layout.get("sign_source") == "uploaded_form" or _signs_loaded_form(layout)
+        )
         signature_labels = [str(item) for item in layout.get("signature_labels") or []]
-        limit = self.container.settings.max_upload_bytes
+        max_bytes = self.container.settings.max_upload_bytes
+        forced = CLIENT_DOCUMENT_TYPES.get(document_type, document_type) if document_type else None
+        if forced is not None and forced not in labels:
+            raise BadRequestError("That document type is not part of this process.")
 
         # Decide every file's place before anything is stored.
         plans: list[tuple[UploadFile, str, str | None, str | None, str | None]] = []
         with tempfile.TemporaryDirectory() as work:
             for index, upload in enumerate(files):
                 name = Path(upload.filename or "upload").name
-                data = await upload.read(limit + 1)
+                data = await upload.read(max_bytes + 1)
                 await upload.seek(0)
                 role: str | None = None
-                document_type: str | None = None
-                matched: str | None = None
-                if len(data) <= limit:
+                file_type: str | None = forced
+                matched: str | None = "chosen" if forced else None
+                if forced is None and len(data) <= max_bytes:
                     text = ""
                     if data.startswith(b"%PDF"):
                         scratch = Path(work) / f"{index}.pdf"
@@ -1335,24 +1358,25 @@ class CaseService:
                     if role is None:
                         route = route_document(name, text, list(labels))
                         if route is not None:
-                            document_type, matched = route.document_type, route.matched_by
-                plans.append((upload, name, role, document_type, matched))
+                            file_type, matched = route.document_type, route.matched_by
+                plans.append((upload, name, role, file_type, matched))
 
         groups: dict[tuple[str | None, str | None], list[UploadFile]] = {}
-        for upload, _name, role, document_type, _matched in plans:
-            groups.setdefault((document_type, role), []).append(upload)
+        for upload, _name, role, file_type, _matched in plans:
+            groups.setdefault((file_type, role), []).append(upload)
         accepted: set[str] = set()
         duplicates: set[str] = set()
         rejected: dict[str, str] = {}
-        for (document_type, role), group in groups.items():
-            routed = document_type is not None or role is not None
+        for (file_type, role), group in groups.items():
+            routed = file_type is not None or role is not None
             result, _schedule = await self.add_uploads(
-                case_id, group, document_type=document_type, role=role, replace_existing=routed
+                case_id, group, document_type=file_type, role=role, replace_existing=routed
             )
             accepted.update(result.accepted_filenames)
             duplicates.update(result.skipped_duplicates)
             rejected.update({item.filename: item.reason for item in result.rejected})
-        await self.run_ingestion(case_id)
+        # What a client's document supplies is marked as coming from the client's side.
+        await self.run_ingestion(case_id, actor="signer" if from_client else "office")
 
         self.session.expire_all()
         case = await self._get_case(case_id)
@@ -1360,7 +1384,7 @@ class CaseService:
         for document in sorted(case.documents, key=lambda item: (item.created_at, str(item.id))):
             newest[document.original_filename] = document
         routed_files: list[RoutedFile] = []
-        for _upload, name, role, document_type, matched in plans:
+        for _upload, name, role, file_type, matched in plans:
             if name in rejected:
                 routed_files.append(RoutedFile(filename=name, outcome="rejected", reason=rejected[name]))
                 continue
@@ -1372,7 +1396,7 @@ class CaseService:
                 continue
             # A form with nothing to fill is kept as evidence; say what the case actually holds.
             is_form = role == "form" and document.role == "form"
-            filed = is_form or (document_type is not None and document.document_type == document_type)
+            filed = is_form or (file_type is not None and document.document_type == file_type)
             kept_type = document.document_type if document.document_type not in {None, "", "unknown"} else None
             routed_files.append(
                 RoutedFile(
@@ -1391,9 +1415,10 @@ class CaseService:
         self.session.add(
             AuditLog(
                 case_id=case.id,
-                action=AuditAction.SMART_UPLOAD_COMPLETED,
-                actor=self.scope.actor,
+                action=audit_action,
+                actor=audit_actor or self.scope.actor,
                 new_value={
+                    **(audit_extra or {}),
                     "documents": len(plans),
                     "status": case.status.value,
                     "routed_files": [
@@ -2264,7 +2289,6 @@ def _field_sources(case: Case) -> dict[str, FieldSource]:
     return sources
 
 
-_SMART_UPLOAD_LIMIT = 10
 # Names the office uses for a process that the catalog files under another key.
 _PROCESS_ALIASES = {"real_estate_closing": "real_estate"}
 _INSPECT_PAGES = 5

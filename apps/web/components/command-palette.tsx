@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { ApiError, api } from "@/lib/api";
 import { processFamily, processLabel, type ProcessFamily } from "@/lib/filing";
+import { readOfficeSettings } from "@/lib/office-settings";
 
 async function officeJson<T>(path: string): Promise<T> {
   const response = await fetch(`/api/office${path}`, { cache: "no-store" });
@@ -21,6 +22,7 @@ const SECTIONS = [
   { href: "/analytics", label: "דוחות ואנליטיקה (/analytics)" },
   { href: "/verify", label: "אימות חותם (/verify)" },
   { href: "/audit", label: "יומן אבטחה (/audit)" },
+  { href: "/settings", label: "הגדרות (/settings)" },
 ] as const;
 
 const QUICK = [
@@ -94,10 +96,12 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       const match = catalog.find((item) => item.key === prefer) ?? catalog.find((item) => processFamily(item.key) === family);
       if (!match) throw new ApiError("התהליך לא נמצא בקטלוג.", 404);
       const created = await api.createCase({ name: label, process_key: match.key });
-      try {
-        await api.loadDefaultForm(created.id);
-      } catch {
-        /* The case is open. The workspace can load the form again. */
+      if (readOfficeSettings().autoLoadForm) {
+        try {
+          await api.loadDefaultForm(created.id);
+        } catch {
+          /* The case is open. The workspace can load the form again. */
+        }
       }
       onOpenChange(false);
       router.push(`/cases/${created.id}`);

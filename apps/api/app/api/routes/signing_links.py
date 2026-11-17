@@ -2,7 +2,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from app.core.deps import get_office_link_service
+from app.core.deps import get_office_intake_service, get_office_link_service
+from app.schemas.intake import IntakeLinkCreated
+from app.services.intake_service import IntakeService
 from app.schemas.portal import SigningLinkCreated, SigningLinkRead
 from app.services.portal_service import PortalService
 
@@ -31,3 +33,12 @@ async def revoke_signing_link(
     service: PortalService = Depends(get_office_link_service),
 ) -> None:
     await service.revoke_link(case_id)
+
+
+@router.post("/{case_id}/intake-link", response_model=IntakeLinkCreated, status_code=201)
+async def create_intake_link(
+    case_id: UUID,
+    service: IntakeService = Depends(get_office_intake_service),
+) -> IntakeLinkCreated:
+    """A link the client uses to hand in documents. A new link replaces the one before it."""
+    return await service.create_link(case_id)

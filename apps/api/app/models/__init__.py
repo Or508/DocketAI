@@ -2,6 +2,7 @@ from app.models.audit_log import AuditLog
 from app.models.case import Case
 from app.models.case_note import CaseNote
 from app.models.document import Document
+from app.models.intake_link import IntakeLink
 from app.models.organization import Organization
 from app.models.process_definition import ProcessDefinition
 from app.models.signing_link import SigningLink
@@ -13,6 +14,7 @@ __all__ = [
     "Case",
     "CaseNote",
     "Document",
+    "IntakeLink",
     "Organization",
     "ProcessDefinition",
     "SigningLink",

@@ -29,6 +29,8 @@ const LABELS: Record<string, string> = {
   smart_upload_completed: "העלאה חכמה מרוכזת ומיון אוטומטי למגירות",
   client_vault_reused: "מסמכי לקוח שוכפלו אוטומטית מכספת הלקוחות",
   signing_link_revoked: "קישור חתימה בוטל והתיק הוחזר לעריכה",
+  intake_link_created: "נוצר קישור להעלאת מסמכים עבור הלקוח",
+  client_intake_uploaded: "הלקוח העלה מסמכים מרחוק לתיק",
   signature_invalidated: "החתימה בוטלה",
 };
 

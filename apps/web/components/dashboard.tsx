@@ -16,6 +16,7 @@ import { ApiError, api, detailFrom, downloadCaseArchive } from "@/lib/api";
 import { archiveFilename } from "@/lib/dispatch";
 import { dispatchFormTitle, folderFromWorkspace, processFamily, processLabel, type FolderTone, type ProcessFamily } from "@/lib/filing";
 import { hebrewOfficeError } from "@/lib/hebrew";
+import { readOfficeSettings } from "@/lib/office-settings";
 import { formatWhen } from "@/lib/utils";
 
 type Bucket = "all" | "preparing" | "awaiting" | "done";
@@ -212,10 +213,12 @@ export function Dashboard() {
         process_key: key,
         client_name: client || undefined,
       });
-      try {
-        await api.loadDefaultForm(created.id);
-      } catch {
-        /* The case is open. The workspace can load the blank form again. */
+      if (readOfficeSettings().autoLoadForm) {
+        try {
+          await api.loadDefaultForm(created.id);
+        } catch {
+          /* The case is open. The workspace can load the blank form again. */
+        }
       }
       router.push(`/cases/${created.id}`);
     } catch (reason) {
