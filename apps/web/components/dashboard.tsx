@@ -11,6 +11,7 @@ import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OfficeBar } from "@/components/office-bar";
+import { OfficeTopNav } from "@/components/OfficeTopNav";
 import { ApiError, api, detailFrom, downloadCaseArchive } from "@/lib/api";
 import { archiveFilename } from "@/lib/dispatch";
 import { dispatchFormTitle, folderFromWorkspace, processFamily, processLabel, type FolderTone, type ProcessFamily } from "@/lib/filing";
@@ -277,7 +278,8 @@ export function Dashboard() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-6xl flex-col px-5 py-8">
-      <header className="flex flex-wrap items-end justify-between gap-4 border-b-2 border-ink/15 pb-5">
+      <OfficeTopNav />
+      <header className="mt-4 flex flex-wrap items-end justify-between gap-4 border-b-2 border-ink/15 pb-5">
         <div>
           <Wordmark />
           <div className="mt-3">
@@ -285,28 +287,14 @@ export function Dashboard() {
           </div>
           <p className="mt-3 text-sm font-semibold tracking-wide text-tide">ארון תיוק ובקרת מסמכים</p>
           <h1 className="mt-1 font-serif text-4xl text-ink">תיקיות לקוח</h1>
-          <nav className="mt-3 flex flex-wrap gap-4 text-sm font-semibold">
-            <a className="text-tide underline" href="/templates">
-              קטלוג טפסים (/templates)
-            </a>
-            <a className="inline-flex h-10 items-center rounded-md bg-tide px-3 text-white" href="/clients">
-              ספר לקוחות וכספת (/clients)
-            </a>
-            <a className="text-tide underline" href="/verify">
-              אימות חותם ציבורי (/verify)
-            </a>
-            <a className="text-tide underline" href="/analytics">
-              דוחות ואנליטיקה (/analytics)
-            </a>
-            <button
-              type="button"
-              className="inline-flex h-10 items-center rounded-md border-2 border-ink/25 bg-white px-3 text-sm font-semibold text-ink"
-              disabled={exporting}
-              onClick={() => void exportCsv()}
-            >
-              {exporting ? "מייצא…" : "ייצוא לאקסל (CSV)"}
-            </button>
-          </nav>
+          <button
+            type="button"
+            className="mt-3 inline-flex h-10 items-center rounded-md border-2 border-ink/25 bg-white px-3 text-sm font-semibold text-ink"
+            disabled={exporting}
+            onClick={() => void exportCsv()}
+          >
+            {exporting ? "מייצא…" : "ייצוא לאקסל (CSV)"}
+          </button>
         </div>
         <div className="relative">
           <Button type="button" onClick={() => setQuickOpen((open) => !open)} aria-expanded={quickOpen}>

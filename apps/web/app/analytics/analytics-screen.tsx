@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+
+import { OfficeTopNav } from "@/components/OfficeTopNav";
 
 type ProcessBreakdown = {
   process_type: string;
@@ -80,7 +81,8 @@ export function AnalyticsScreen() {
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <OfficeTopNav />
+      <header className="mt-4 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-tide">ארון תיוק ובקרת מסמכים</p>
           <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl">דוחות, מדדי ביצוע וייצוא לאקסל</h1>
@@ -88,17 +90,6 @@ export function AnalyticsScreen() {
             תמונת מצב של תיקי המשרד: כמה בהכנה, כמה ממתינים לחתימה וכמה נחתמו, וכמה מהעבודה נעשתה אוטומטית מתוך המסמכים.
           </p>
         </div>
-        <nav className="flex flex-wrap gap-4 text-sm font-semibold">
-          <Link href="/cases" className="text-tide underline">
-            ארון התיקים
-          </Link>
-          <Link href="/templates" className="text-tide underline">
-            קטלוג טפסים
-          </Link>
-          <Link href="/verify" className="text-tide underline">
-            אימות חותם ציבורי
-          </Link>
-        </nav>
       </header>
 
       <section className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-lg border-2 border-tide/30 bg-tide/5 p-5">

@@ -22,6 +22,8 @@ import { WhatsAppReminder } from "@/components/whatsapp-reminder";
 import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
 import { OfficeBar } from "@/components/office-bar";
+import { OfficeTopNav } from "@/components/OfficeTopNav";
+import { ReadinessShield } from "@/components/readiness-shield";
 import { ApiError, api, downloadCaseArchive, filledFormUrl, signedDocumentUrl } from "@/lib/api";
 import { archiveFilename } from "@/lib/dispatch";
 import { FIELD_LABEL, blankFormNotice, dispatchFormTitle, folderFromWorkspace, formDrawerTitle, processLabel, processTypeOf } from "@/lib/filing";
@@ -347,7 +349,8 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
 
   return (
     <main className="mx-auto min-h-screen max-w-7xl px-5 py-6">
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b-2 border-ink/15 pb-4">
+      <OfficeTopNav />
+      <header className="mt-4 flex flex-wrap items-start justify-between gap-4 border-b-2 border-ink/15 pb-4">
         <div>
           <Wordmark />
           <div className="mt-3">
@@ -473,6 +476,12 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
               </div>
             ) : null}
           </section>
+          <ReadinessShield
+            workspace={workspace}
+            intake={intake}
+            loadingForm={loadingForm}
+            onLoadBlank={workspace.case.status !== "signed" ? loadBlankForm : undefined}
+          />
           <SignerLinkCard
             caseId={caseId}
             clientName={workspace.case.client_name || workspace.case.name}

@@ -92,7 +92,7 @@ export function FilingSlots({
   }, [armed, formFiles.length, onUpload, sourceFiles]);
 
   return (
-    <section className="rounded-lg border-2 border-ink/15 bg-white p-5 shadow-card">
+    <section id="document-drawers" className="rounded-lg border-2 border-ink/15 bg-white p-5 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-serif text-2xl">מגירות מסמכים</h2>

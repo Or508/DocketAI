@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+
+import { OfficeTopNav } from "@/components/OfficeTopNav";
 
 type Drawer = {
   id: string;
@@ -79,7 +80,8 @@ export function TemplatesScreen() {
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <OfficeTopNav />
+      <header className="mt-4 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-tide">ארון תיוק ובקרת מסמכים</p>
           <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl">קטלוג טפסים ותבניות אוטומציה</h1>
@@ -87,14 +89,6 @@ export function TemplatesScreen() {
             כל טופס שהמשרד ממלא: אילו מסמכים הוא דורש מהלקוח, אילו שדות מתמלאים מתוכם, והאם הטופס הריק זמין במערכת.
           </p>
         </div>
-        <nav className="flex gap-4 text-sm font-semibold">
-          <Link href="/cases" className="text-tide underline">
-            חזרה לארון התיקים
-          </Link>
-          <Link href="/verify" className="text-tide underline">
-            אימות חותם ציבורי
-          </Link>
-        </nav>
       </header>
 
       {error ? (

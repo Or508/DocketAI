@@ -33,8 +33,11 @@ export function IntegrityPanel({
       <div className="space-y-4 px-4 py-4">
         <p className="text-sm leading-6">נחתם ב־{signed}, שעון ישראל.</p>
         <p className="text-sm leading-6">
-          מזהה אימות <span className="break-all font-mono text-xs">{seal.signer_verification_id}</span>
+          קוד חותם דיגיטלי <span className="break-all font-mono text-xs">{seal.signer_verification_id}</span>
         </p>
+        <a className="inline-flex text-sm font-semibold text-tide underline" href="/verify">
+          אימות החותם בציבור (/verify)
+        </a>
         <div>
           <p className="text-sm leading-6">טביעת האצבע של הקובץ החתום</p>
           <p className="mt-2 break-all rounded-md border border-line bg-[#fbf8f2] p-3 font-mono text-xs leading-5">
@@ -65,7 +68,7 @@ export function IntegrityPanel({
         <SignedChecklist />
         <div className="flex flex-col gap-2">
           <Button asChild className="min-h-11 w-full">
-            <a href={signedPdfUrl}>הורדת הטופס החתום</a>
+            <a href={signedPdfUrl}>צפייה והורדת הטופס החתום</a>
           </Button>
           <Button asChild variant="outline" className="min-h-11 w-full">
             <a href={certificateUrl}>הורדת אישור החתימה</a>

@@ -2,6 +2,8 @@
 
 import { DragEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
+import { OfficeTopNav } from "@/components/OfficeTopNav";
+
 type Seal = {
   valid: boolean;
   status: "valid" | "superseded";
@@ -144,7 +146,8 @@ export function VerifyScreen({ initialCode }: { initialCode: string }) {
 
   return (
     <main className="mx-auto min-h-screen max-w-3xl px-5 py-10">
-      <header>
+      <OfficeTopNav />
+      <header className="mt-4">
         <p className="text-sm font-semibold text-tide">בדיקה ציבורית · ללא צורך בהתחברות</p>
         <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl">אימות חותם קריפטוגרפי ומסמכים חתומים</h1>
         <p className="mt-3 text-mist">

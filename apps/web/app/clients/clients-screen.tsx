@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { OfficeTopNav } from "@/components/OfficeTopNav";
+
 type ClientCase = {
   case_id: string;
   process_type: string;
@@ -116,7 +118,8 @@ export function ClientsScreen() {
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <OfficeTopNav />
+      <header className="mt-4 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-tide">ארון תיוק ובקרת מסמכים</p>
           <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl">ספר לקוחות וכספת מסמכים חכמה</h1>
@@ -125,14 +128,6 @@ export function ClientsScreen() {
             נפתח מהם בלחיצה אחת.
           </p>
         </div>
-        <nav className="flex gap-4 text-sm font-semibold">
-          <Link href="/cases" className="text-tide underline">
-            חזרה לארון התיקים
-          </Link>
-          <Link href="/templates" className="text-tide underline">
-            קטלוג הטפסים
-          </Link>
-        </nav>
       </header>
 
       {error ? (

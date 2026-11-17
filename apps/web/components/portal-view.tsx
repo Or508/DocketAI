@@ -118,6 +118,28 @@ export function PortalViewScreen({ token }: { token: string }) {
         <h1 className="font-serif text-4xl">{processLabel(view.process.name, "בל/6101 – דיווח רב-שנתי ביטוח לאומי")}</h1>
         {view.client_name ? <p className="mt-2 text-lg">{view.client_name}</p> : null}
       </header>
+      <ol aria-label="התקדמות החתימה" className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+        {(
+          [
+            ["1", "בדיקת פרטים וטופס"],
+            ["2", "חתימה על המסמך"],
+            ["3", "אישור וחותם דיגיטלי"],
+          ] as const
+        ).map(([number, label]) => {
+          const phase = step <= 2 ? 1 : step === 3 ? 2 : 3;
+          const current = String(phase) === number;
+          const done = phase > Number(number);
+          return (
+            <li
+              key={number}
+              className={`rounded-md border-2 px-3 py-2 text-center font-semibold ${current ? "border-tide bg-tide text-white" : done ? "border-moss bg-[#e7f5ee] text-[#0d4a2e]" : "border-ink/15 bg-white text-ink"}`}
+              aria-current={current ? "step" : undefined}
+            >
+              {number}. {label}
+            </li>
+          );
+        })}
+      </ol>
       <nav aria-label="שלבי החתימה" className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
         {STEP_LABELS.map((label, index) => {
           const number = (index + 1) as Step;
@@ -193,6 +215,17 @@ export function PortalViewScreen({ token }: { token: string }) {
             <h2 className="font-serif text-2xl">צפייה בטופס המלא</h2>
           </div>
           <div className="min-w-0 overflow-hidden px-4 py-4">
+            <details className="mb-4 rounded-md border-2 border-ink/10 bg-[#fbf8f2] px-3 py-3" open>
+              <summary className="cursor-pointer font-semibold">סיכום הפרטים שמולאו עבורך בטופס</summary>
+              <ul className="mt-3 grid gap-2">
+                {view.process.required_fields.map((field) => (
+                  <li key={field.key} className="text-sm">
+                    <span className="font-semibold">{FIELD_LABEL[field.key] ?? field.label_he ?? field.label}: </span>
+                    <span dir="auto">{view.field_values[field.key] || "עדיין ריק"}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
             <PdfCanvas url={portalPreviewUrl(token)} refreshKey={`${view.review_digest ?? ""}:${previewStamp}`} />
           </div>
           <div className="flex flex-col gap-2 px-4 pb-4">
