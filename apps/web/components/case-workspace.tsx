@@ -19,9 +19,7 @@ import { SourceCompare } from "@/components/source-compare";
 import { SigningModal } from "@/components/signing-modal";
 import { StatusPill } from "@/components/status-pill";
 import { WhatsAppReminder } from "@/components/whatsapp-reminder";
-import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
-import { OfficeBar } from "@/components/office-bar";
 import { OfficeTopNav } from "@/components/OfficeTopNav";
 import { ReadinessShield } from "@/components/readiness-shield";
 import { CASE_PRINT_CSS, CaseCover } from "@/components/case-cover";
@@ -350,27 +348,26 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-7xl px-5 py-6">
+    <main className="mx-auto min-h-screen max-w-[96rem] px-5 py-6 lg:px-8 lg:py-8">
       <style>{CASE_PRINT_CSS}</style>
       <CaseCover workspace={workspace} intake={intake} tone={tone} />
       <div className="no-print">
       <OfficeTopNav />
-      <header className="mt-4 flex flex-wrap items-start justify-between gap-4 border-b-2 border-ink/15 pb-4">
-        <div>
-          <Wordmark />
-          <div className="mt-3">
-            <OfficeBar />
-          </div>
-          <h1 className="mt-4 font-serif text-4xl">{workspace.case.client_name || workspace.case.name}</h1>
-          <p className="mt-1 text-sm font-medium text-ink">{processLabel(processType, workspace.process.name)}</p>
-        </div>
-        <div className="flex w-full max-w-xs flex-col items-stretch gap-2 sm:w-auto">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line pb-5">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+          <a href="/cases" className="text-sm font-medium text-mist hover:text-tide">
+            תיקים ‹
+          </a>
+          <h1 className="text-3xl font-bold tracking-tight text-ink">{workspace.case.client_name || workspace.case.name}</h1>
           <StatusPill tone={tone} />
+          <p className="text-sm text-mist">{processLabel(processType, workspace.process.name)}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" disabled={busy} onClick={() => void saveArchive()}>
-            הורדת תיק מלא לארכיון (ZIP)
+            הורדת התיק (ZIP)
           </Button>
           <Button type="button" variant="outline" onClick={() => window.print()}>
-            הדפס דף תיק 🖨
+            הדפסת דף תיק
           </Button>
           {workspace.case.status === "signed" ? (
             <Button type="button" variant="ghost" disabled={busy} onClick={() => void reopenCase()}>
@@ -379,7 +376,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
           ) : null}
           {tone === "awaiting" ? (
             <WhatsAppReminder
-              className="w-full"
+              className="max-w-xs"
               clientName={workspace.case.client_name || workspace.case.name}
               phone={workspace.field_values.phone ?? ""}
               formTitle={dispatchFormTitle(processType)}
@@ -397,28 +394,8 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
       {notice ? <p className="mt-4 text-sm font-medium text-moss">{notice}</p> : null}
       {processing ? <PipelineBanner pipeline={workspace.gap.pipeline} /> : null}
 
-      {workspace.case.status !== "signed" ? (
-        <div className="mt-6 grid gap-5">
-          <DocumentRequest
-            caseId={caseId}
-            clientName={workspace.case.client_name || workspace.case.name}
-            phone={workspace.field_values.phone ?? ""}
-            processTitle={dispatchFormTitle(processType)}
-          />
-          <SmartDropzone
-            caseId={caseId}
-            onUploaded={(next, summary) => {
-              setWorkspace(next);
-              setNotice(summary);
-              setError(null);
-              setWatch(true);
-              void refresh();
-            }}
-          />
-        </div>
-      ) : null}
-
-      <div className="mt-6 grid items-start gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(18rem,0.8fr)]">
+      <div className="mt-6 grid items-start gap-6 lg:grid-cols-12 lg:gap-6">
+        <div className="space-y-6 lg:col-span-7">
         <FilingSlots
           workspace={workspace}
           intake={intake}
@@ -432,6 +409,21 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
           onLoadBlank={workspace.case.status !== "signed" ? loadBlankForm : undefined}
           loadingBlank={loadingForm}
           onView={setSourceFile}
+          lead={
+            workspace.case.status !== "signed" ? (
+              <SmartDropzone
+                compact
+                caseId={caseId}
+                onUploaded={(next, summary) => {
+                  setWorkspace(next);
+                  setNotice(summary);
+                  setError(null);
+                  setWatch(true);
+                  void refresh();
+                }}
+              />
+            ) : null
+          }
         />
         <FieldVerification
           processKey={workspace.process.key}
@@ -455,30 +447,90 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
             }
           }}
         />
-        <div className="space-y-5">
-          <section className="rounded-lg border-2 border-ink/15 bg-white shadow-card">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-ink/10 px-4 py-4">
-              <h2 className="font-serif text-2xl">טיוטת הטופס הממולא</h2>
+        <section className="rounded-lg border border-ink/15 bg-white p-4 shadow-card">
+          <h2 className="font-serif text-xl">מוכנות התיק, שליחה לחתימה ובקשת מסמכים</h2>
+          <div className="mt-4">
+            <ReadinessShield
+              embedded
+              caseId={caseId}
+              workspace={workspace}
+              intake={intake}
+              loadingForm={loadingForm}
+              onLoadBlank={workspace.case.status !== "signed" ? loadBlankForm : undefined}
+            />
+            <SignerLinkCard
+              embedded
+              caseId={caseId}
+              clientName={workspace.case.client_name || workspace.case.name}
+              phone={workspace.field_values.phone ?? ""}
+              email={workspace.field_values.email ?? ""}
+              signed={workspace.case.status === "signed"}
+              waiting={tone === "awaiting" || workspace.gap.pipeline.stage === "ready_for_signature"}
+              verificationId={workspace.case.audit.signer_verification_id}
+              processKey={processType}
+              onRevoked={(next) => {
+                setWorkspace(next);
+                setNotice("קישור החתימה בוטל והתיק חזר לעריכה.");
+                void refresh();
+              }}
+            />
+            {workspace.case.status !== "signed" ? (
+              <DocumentRequest
+                embedded
+                caseId={caseId}
+                clientName={workspace.case.client_name || workspace.case.name}
+                phone={workspace.field_values.phone ?? ""}
+                processTitle={dispatchFormTitle(processType)}
+              />
+            ) : null}
+            <div className="mt-4 border-t border-ink/10 pt-4">
+              <Button type="button" variant="outline" disabled={!workspace.ready_to_sign || busy} onClick={() => setSigning(true)}>
+                חתימת המשרד
+              </Button>
+              {workspace.signing_blockers.length > 0 ? (
+                <ul className="mt-3 space-y-1 text-sm font-medium text-clay">
+                  {workspace.signing_blockers.map((item) => (
+                    <li key={item}>{hebrewDetail(409, item)}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {workspace.case.download_ready ? (
+                <div className="mt-4 space-y-3">
+                  <SignedChecklist />
+                  <a className="block text-sm font-semibold text-tide underline" href={signedDocumentUrl(caseId)}>
+                    הורדת הטופס החתום
+                  </a>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+        <AuditCard caseId={caseId} audit={workspace.case.audit} />
+        </div>
+        <aside className="lg:sticky lg:top-20 lg:col-span-5">
+          <section className="rounded-lg border border-ink/15 bg-white shadow-card">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 px-4 py-3">
+              <h2 className="font-serif text-xl">טיוטת הטופס הממולא</h2>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" disabled={!form} onClick={() => setPreviewLarge(true)}>
+                <Button type="button" size="sm" variant="outline" disabled={!form} onClick={() => setPreviewLarge(true)}>
                   הגדל למסך מלא
                 </Button>
                 {form ? (
                   <a
-                    className="inline-flex h-10 items-center rounded-md border-2 border-ink/30 bg-white px-3 text-sm font-semibold text-ink"
+                    className="inline-flex h-8 items-center rounded-md border border-ink/30 bg-white px-2.5 text-xs font-semibold text-ink"
                     href={`${previewUrl}?rev=${encodeURIComponent(previewRev)}`}
                     download="טיוטת-טופס.pdf"
                   >
                     הורד טיוטה
                   </a>
                 ) : null}
-                <Button type="button" variant="outline" onClick={() => setPreviewOpen((open) => !open)}>
+                <Button type="button" size="sm" variant="outline" onClick={() => setPreviewOpen((open) => !open)}>
                   {previewOpen ? "כיווץ" : "פתיחה"}
                 </Button>
               </div>
             </div>
             {previewOpen ? (
-              <div className="max-h-[40rem] overflow-auto px-4 py-4">
+              <div className="max-h-[calc(100vh-8rem)] overflow-auto px-4 py-4">
                 {form ? (
                   <>
                     <PdfCanvas url={previewUrl} refreshKey={previewRev} />
@@ -487,54 +539,15 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
                 ) : (
                   <p className="text-sm text-ink">סמנו PDF כטופס למילוי וחתימה כדי לראות את הטיוטה כאן.</p>
                 )}
+                {workspace.case.download_ready ? (
+                  <div className="mt-4 border-t border-ink/10 pt-4">
+                    <SignedPdfFrame src={signedDocumentUrl(caseId)} />
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </section>
-          <ReadinessShield
-            caseId={caseId}
-            workspace={workspace}
-            intake={intake}
-            loadingForm={loadingForm}
-            onLoadBlank={workspace.case.status !== "signed" ? loadBlankForm : undefined}
-          />
-          <SignerLinkCard
-            caseId={caseId}
-            clientName={workspace.case.client_name || workspace.case.name}
-            phone={workspace.field_values.phone ?? ""}
-            email={workspace.field_values.email ?? ""}
-            signed={workspace.case.status === "signed"}
-            waiting={tone === "awaiting" || workspace.gap.pipeline.stage === "ready_for_signature"}
-            verificationId={workspace.case.audit.signer_verification_id}
-            processKey={processType}
-            onRevoked={(next) => {
-              setWorkspace(next);
-              setNotice("קישור החתימה בוטל והתיק חזר לעריכה.");
-              void refresh();
-            }}
-          />
-          <div className="rounded-lg border-2 border-ink/15 bg-white p-4">
-            <Button type="button" variant="outline" disabled={!workspace.ready_to_sign || busy} onClick={() => setSigning(true)}>
-              חתימת המשרד
-            </Button>
-            {workspace.signing_blockers.length > 0 ? (
-              <ul className="mt-3 space-y-1 text-sm font-medium text-clay">
-                {workspace.signing_blockers.map((item) => (
-                  <li key={item}>{hebrewDetail(409, item)}</li>
-                ))}
-              </ul>
-            ) : null}
-            {workspace.case.download_ready ? (
-              <div className="mt-4 space-y-3">
-                <SignedChecklist />
-                <a className="block text-sm font-semibold text-tide underline" href={signedDocumentUrl(caseId)}>
-                  הורדת הטופס החתום
-                </a>
-                <SignedPdfFrame src={signedDocumentUrl(caseId)} />
-              </div>
-            ) : null}
-          </div>
-          <AuditCard caseId={caseId} audit={workspace.case.audit} />
-        </div>
+        </aside>
       </div>
       <div className="mt-5 grid gap-5">
         <InternalNotes caseId={caseId} />
@@ -565,8 +578,8 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
             if (event.key === "Escape") setPreviewLarge(false);
           }}
         >
-          <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col rounded-lg border-2 border-ink bg-paper shadow-card">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-ink/15 px-4 py-3">
+          <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col rounded-lg border border-ink bg-paper shadow-card">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/15 px-4 py-3">
               <h2 className="font-serif text-2xl">טיוטת הטופס הממולא</h2>
               <div className="flex flex-wrap gap-2">
                 <a

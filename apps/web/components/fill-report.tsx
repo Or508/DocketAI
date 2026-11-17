@@ -53,7 +53,7 @@ export function FillReportList({
               <span className="ms-2 font-medium text-ink/70">עמ׳ {field.page}</span>
             </span>
             <span
-              className={`rounded-full border-2 px-2 py-0.5 text-xs font-bold ${
+              className={`rounded-full border px-2 py-0.5 text-xs font-bold ${
                 calm
                   ? "border-moss bg-[#e7f5ee] text-[#0d4a2e]"
                   : waiting

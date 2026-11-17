@@ -12,11 +12,13 @@ export function DocumentRequest({
   clientName,
   phone,
   processTitle,
+  embedded = false,
 }: {
   caseId: string;
   clientName: string;
   phone: string;
   processTitle: string;
+  embedded?: boolean;
 }) {
   const settings = useOfficeSettings();
   const [url, setUrl] = useState<string | null>(null);
@@ -64,9 +66,9 @@ export function DocumentRequest({
     : "";
 
   return (
-    <section className="rounded-lg border-2 border-ink/15 bg-white p-5 shadow-card">
-      <h2 className="font-serif text-2xl">בקש מסמכים מהלקוח (קישור העלאה מהנייד)</h2>
-      <p className="mt-2 text-sm text-ink">שולחים ללקוח קישור להעלאת תעודת זהות, ארנונה או אישור בנק ישירות לתיק.</p>
+    <section className={embedded ? "border-t border-ink/10 pt-4" : "rounded-lg border border-ink/15 bg-white p-5 shadow-card"}>
+      <h3 className={embedded ? "text-sm font-bold text-tide" : "font-serif text-2xl"}>בקש מסמכים מהלקוח (קישור העלאה מהנייד)</h3>
+      <p className="mt-1 text-sm text-ink">שולחים ללקוח קישור להעלאת תעודת זהות, ארנונה או אישור בנק ישירות לתיק.</p>
       <div className="mt-4 flex flex-wrap gap-2">
         <Button type="button" disabled={busy} onClick={() => void createLink()}>
           {busy ? "יוצרים קישור…" : url ? "קישור העלאה חדש" : "בקש מסמכים מהלקוח (קישור העלאה מהנייד)"}
@@ -86,7 +88,7 @@ export function DocumentRequest({
       </div>
       {url && !mobile ? <p className="mt-3 text-sm text-clay">אין מספר נייד ישראלי בתיק, ולכן אי אפשר לפתוח את וואטסאפ. אפשר להעתיק את הקישור.</p> : null}
       {url ? (
-        <p dir="auto" className="mt-3 break-all rounded-md border-2 border-ink/10 bg-[#fbf8f2] px-3 py-2 text-sm">
+        <p dir="auto" className="mt-3 break-all rounded-md border border-ink/10 bg-[#fbf8f2] px-3 py-2 text-sm">
           {url}
         </p>
       ) : null}

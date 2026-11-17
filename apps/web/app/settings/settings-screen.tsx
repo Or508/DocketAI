@@ -38,11 +38,10 @@ export function SettingsScreen() {
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-3xl px-5 py-10">
+    <main className="mx-auto min-h-screen max-w-3xl px-5 py-6 lg:px-10 lg:py-10">
       <OfficeTopNav />
-      <header className="mt-4">
-        <p className="text-sm font-semibold text-tide">ארון תיוק ובקרת מסמכים</p>
-        <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl">הגדרות משרד, מיתוג ותבניות תקשורת</h1>
+      <header>
+        <h1 className="text-3xl font-bold tracking-tight text-ink">הגדרות המשרד</h1>
         <p className="mt-3 text-mist">ההגדרות נשמרות בדפדפן הזה ומשמשות את הודעות הוואטסאפ, האימייל ופתיחת התיק המהירה.</p>
       </header>
 
@@ -53,7 +52,7 @@ export function SettingsScreen() {
           save();
         }}
       >
-        <section className="rounded-lg border-2 border-ink/15 bg-white p-5">
+        <section className="rounded-lg border border-ink/15 bg-white p-5">
           <h2 className="font-serif text-2xl">פרטי המשרד ומיתוג</h2>
           <label className="mt-4 block text-sm font-semibold" htmlFor="office-name">
             שם המשרד לתצוגה
@@ -72,13 +71,13 @@ export function SettingsScreen() {
           </label>
           <textarea
             id="office-footer"
-            className="mt-2 min-h-24 w-full rounded-md border-2 border-ink/25 bg-white px-3 py-2"
+            className="mt-2 min-h-24 w-full rounded-md border border-ink/25 bg-white px-3 py-2"
             value={settings.signatureFooter}
             onChange={(event) => update({ signatureFooter: event.target.value })}
           />
         </section>
 
-        <section className="rounded-lg border-2 border-ink/15 bg-white p-5">
+        <section className="rounded-lg border border-ink/15 bg-white p-5">
           <h2 className="font-serif text-2xl">תבניות הודעה חכמות (WhatsApp ו-Email)</h2>
           <p className="mt-2 text-sm text-mist">אפשר להשתמש ב־{"{client_name}"} {"{process_title}"} {"{link}"}.</p>
           <TemplateField
@@ -101,7 +100,7 @@ export function SettingsScreen() {
           />
         </section>
 
-        <section className="rounded-lg border-2 border-ink/15 bg-white p-5">
+        <section className="rounded-lg border border-ink/15 bg-white p-5">
           <h2 className="font-serif text-2xl">העדפות עבודה ואוטומציה</h2>
           <label className="mt-4 flex items-start gap-3 text-sm font-semibold">
             <input type="checkbox" className="mt-1 h-4 w-4" checked={settings.autoLoadForm} onChange={(event) => update({ autoLoadForm: event.target.checked })} />
@@ -140,7 +139,7 @@ function TemplateField({ id, label, value, onChange }: { id: string; label: stri
       {label}
       <textarea
         id={id}
-        className="mt-2 min-h-24 w-full rounded-md border-2 border-ink/25 bg-white px-3 py-2 font-normal"
+        className="mt-2 min-h-24 w-full rounded-md border border-ink/25 bg-white px-3 py-2 font-normal"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />

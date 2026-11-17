@@ -19,12 +19,12 @@ export function ReadingPanel({ workspace }: { workspace: CaseWorkspace }) {
   );
 
   return (
-    <section className="rounded-lg border-2 border-ink/15 bg-white p-5 shadow-card">
+    <section className="rounded-lg border border-ink/15 bg-white p-5 shadow-card">
       <h2 className="font-serif text-2xl">קריאת המסמכים</h2>
       <p className="mt-1 text-sm leading-6 text-ink">מה נקרא מהקבצים, מה דולג, ומה נשאר למשרד.</p>
       <ul className="mt-4 space-y-4">
         {reports.map((report) => (
-          <li key={report.document_id} className="rounded-md border-2 border-ink/10 px-3 py-3 text-sm leading-6">
+          <li key={report.document_id} className="rounded-md border border-ink/10 px-3 py-3 text-sm leading-6">
             <p className="font-semibold">{report.filename}</p>
             <p className="text-ink">{report.enabled ? "הקריאה פעילה." : "הקריאה כבויה — לא נכתב ערך מהקובץ."}</p>
             {report.blocked === "id_mismatch" ? <p className="font-medium text-clay">{REASONS.id_mismatch}</p> : null}

@@ -173,12 +173,11 @@ export function AuditScreen() {
   const filtering = Boolean(action || query);
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
+    <main className="mx-auto min-h-screen max-w-6xl px-5 py-6 lg:px-10 lg:py-10">
       <OfficeTopNav />
-      <header className="mt-4 flex flex-wrap items-end justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-        <p className="text-sm font-semibold text-tide">ארון תיוק ובקרת מסמכים</p>
-        <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl">יומן אבטחה, ציות ובקרת פעולות משרדית</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-ink">יומן אבטחה</h1>
         <p className="mt-3 max-w-2xl text-mist">
           כל פעולה שנעשתה בתיקי המשרד, מהחדשה לישנה: מי עשה, מתי ובאיזה תיק. היומן מציג מזהים וספירות בלבד, בלי הפרטים
           האישיים של הלקוחות.
@@ -193,7 +192,7 @@ export function AuditScreen() {
       </header>
 
       {error ? (
-        <div role="alert" className="mt-8 rounded-lg border-2 border-clay/40 bg-white p-5">
+        <div role="alert" className="mt-8 rounded-lg border border-clay/40 bg-white p-5">
           <p className="font-medium text-clay">{error}</p>
           <button type="button" onClick={() => void load()} className="mt-3 text-sm font-semibold text-tide underline">
             ניסיון נוסף
@@ -222,7 +221,7 @@ export function AuditScreen() {
               value={typed}
               onChange={(event) => setTyped(event.target.value)}
               placeholder="שם לקוח, שם תיק או סוג טופס"
-              className="mt-2 w-full max-w-md rounded-md border-2 border-ink/20 bg-white px-3 py-2"
+              className="mt-2 w-full max-w-md rounded-md border border-ink/20 bg-white px-3 py-2"
             />
             <div role="group" aria-label="סינון לפי סוג פעולה" className="mt-4 flex flex-wrap gap-2">
               <Pill label="כל הפעולות" count={center.total_events} selected={action === null} onSelect={() => setAction(null)} />
@@ -251,7 +250,7 @@ export function AuditScreen() {
           </p>
 
           {center.events.length > 0 ? (
-            <div className="mt-3 overflow-x-auto rounded-lg border-2 border-ink/15 bg-white shadow-card">
+            <div className="mt-3 overflow-x-auto rounded-lg border border-ink/15 bg-white shadow-card">
               <table className="w-full min-w-[44rem] text-right text-sm">
                 <thead>
                   <tr className="border-b border-line text-xs text-mist">
@@ -318,7 +317,7 @@ function Pill({
       aria-pressed={selected}
       onClick={onSelect}
       className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-semibold ${
-        selected ? "bg-tide text-white" : "border-2 border-ink/15 bg-white text-ink"
+        selected ? "bg-tide text-white" : "border border-ink/15 bg-white text-ink"
       }`}
     >
       {label}
@@ -329,7 +328,7 @@ function Pill({
 
 function Kpi({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-md border-2 border-ink/15 bg-white px-2 py-4">
+    <div className="rounded-md border border-ink/15 bg-white px-2 py-4">
       <dd className="font-serif text-3xl">{value}</dd>
       <dt className="mt-1 text-xs font-semibold text-mist">{label}</dt>
     </div>

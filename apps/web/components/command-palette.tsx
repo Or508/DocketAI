@@ -16,13 +16,13 @@ async function officeJson<T>(path: string): Promise<T> {
 }
 
 const SECTIONS = [
-  { href: "/cases", label: "ארון תיקים (/cases)" },
-  { href: "/clients", label: "ספר לקוחות וכספת (/clients)" },
-  { href: "/templates", label: "קטלוג טפסים (/templates)" },
-  { href: "/analytics", label: "דוחות ואנליטיקה (/analytics)" },
-  { href: "/verify", label: "אימות חותם (/verify)" },
-  { href: "/audit", label: "יומן אבטחה (/audit)" },
-  { href: "/settings", label: "הגדרות (/settings)" },
+  { href: "/cases", label: "ארון תיקים" },
+  { href: "/clients", label: "ספר לקוחות וכספת" },
+  { href: "/templates", label: "קטלוג טפסים" },
+  { href: "/analytics", label: "דוחות ואנליטיקה" },
+  { href: "/verify", label: "אימות חותם" },
+  { href: "/audit", label: "יומן אבטחה" },
+  { href: "/settings", label: "הגדרות" },
 ] as const;
 
 const QUICK = [
@@ -119,7 +119,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         role="dialog"
         aria-modal="true"
         aria-label="חיפוש מהיר בתיקים ולקוחות"
-        className="w-full max-w-xl rounded-lg border-2 border-ink bg-paper p-4 shadow-card"
+        className="w-full max-w-xl rounded-lg border border-ink bg-paper p-4 shadow-card"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <label className="block text-sm font-semibold" htmlFor="command-query">
@@ -130,7 +130,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
           autoFocus
           value={query}
           placeholder="שם לקוח, מספר תיק, או סוג תהליך"
-          className="mt-2 h-11 w-full rounded-md border-2 border-ink/25 bg-white px-3 text-base"
+          className="mt-2 h-11 w-full rounded-md border border-ink/25 bg-white px-3 text-base"
           onChange={(event) => setQuery(event.target.value)}
         />
         {error ? (

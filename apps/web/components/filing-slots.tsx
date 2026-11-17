@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { CaseWorkspace, IntakeSummary } from "@docketai/shared-types";
 
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ export function FilingSlots({
   onLoadBlank,
   loadingBlank,
   onView,
+  lead,
 }: {
   workspace: CaseWorkspace;
   intake: IntakeSummary | null;
@@ -38,6 +39,7 @@ export function FilingSlots({
   onLoadBlank?: () => Promise<void>;
   loadingBlank?: boolean;
   onView: (file: DrawerFile) => void;
+  lead?: ReactNode;
 }) {
   const [armed, setArmed] = useState<string | null>(null);
   const forms = intake?.forms.filter((item) => item.role === "form") ?? [];
@@ -92,35 +94,18 @@ export function FilingSlots({
   }, [armed, formFiles.length, onUpload, sourceFiles]);
 
   return (
-    <section id="document-drawers" className="rounded-lg border-2 border-ink/15 bg-white p-5 shadow-card">
+    <section id="document-drawers" className="rounded-lg border border-ink/15 bg-white p-5 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-serif text-2xl">מגירות מסמכים</h2>
-          <p className="mt-1 text-sm text-ink">אפשר להעלות, לגרור, או להדביק צילום מסך (Ctrl+V) על המגירה. ירוק — הקובץ במקום.</p>
+          <h2 className="font-serif text-xl">קליטת מסמכים ומגירות מקור</h2>
+          <p className="mt-1 text-xs text-mist">גררו, הדביקו (Ctrl+V) או העלו. ירוק — הקובץ במקום.</p>
         </div>
-        <Button type="button" variant="outline" disabled={rereading} onClick={() => void onReread()}>
-          {rereading ? "קוראים מחדש…" : "קרא מחדש מהמסמכים"}
+        <Button type="button" size="sm" variant="outline" disabled={rereading} onClick={() => void onReread()}>
+          {rereading ? "קוראים מחדש…" : "קרא מחדש"}
         </Button>
       </div>
-      <div className="mt-4 grid gap-3">
-        <Slot
-          slot="form"
-          title={formTitle}
-          files={formFiles}
-          fieldsRead={formFiles.some((file) => fieldsWereRead(workspace, file.id))}
-          pending={pendingSlots.includes("form")}
-          error={slotErrors.form ?? ""}
-          armed={armed === "form"}
-          choices={choices}
-          onArm={() => setArmed("form")}
-          onUpload={onUpload}
-          onRemove={onRemove}
-          onMove={onMove}
-          onLoadBlank={onLoadBlank}
-          loadingBlank={loadingBlank}
-          loadLabel={loadLabel}
-          onView={onView}
-        />
+      {lead ? <div className="mt-3">{lead}</div> : null}
+      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
         {sources.map((document) => {
           const files = sourceFiles.get(document.type_key) ?? [];
           return (
@@ -142,8 +127,26 @@ export function FilingSlots({
             />
           );
         })}
+        <Slot
+          slot="form"
+          title={formTitle}
+          files={formFiles}
+          fieldsRead={formFiles.some((file) => fieldsWereRead(workspace, file.id))}
+          pending={pendingSlots.includes("form")}
+          error={slotErrors.form ?? ""}
+          armed={armed === "form"}
+          choices={choices}
+          onArm={() => setArmed("form")}
+          onUpload={onUpload}
+          onRemove={onRemove}
+          onMove={onMove}
+          onLoadBlank={onLoadBlank}
+          loadingBlank={loadingBlank}
+          loadLabel={loadLabel}
+          onView={onView}
+        />
         {waiting.length ? (
-          <div className="rounded-lg border-2 border-amberink bg-[#fbf3e4] p-4">
+          <div className="rounded-lg border border-amberink bg-[#fbf3e4] p-3 md:col-span-2">
             <p className="font-semibold text-ink">ממתינים לשיבוץ</p>
             {slotErrors.waiting ? (
               <p className="mt-2 text-sm font-semibold leading-6 text-clay" role="alert">
@@ -243,14 +246,14 @@ function Slot({
         setOver(false);
         take(filesFromTransfer(event.dataTransfer), ready);
       }}
-      className={`rounded-lg border-2 p-4 outline-none transition duration-200 focus-visible:ring-2 focus-visible:ring-tide ${
+      className={`rounded-lg border p-3 outline-none transition duration-200 focus-visible:ring-2 focus-visible:ring-tide ${
         ready ? "border-moss bg-[#e7f5ee]" : "border-amberink bg-[#fbf3e4]"
       } ${over || armed ? "ring-2 ring-tide" : ""}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="font-semibold text-ink">{title}</p>
-          <p className={`text-sm font-bold ${ready ? "text-[#0d4a2e]" : "text-[#5c3b08]"}`}>{status}</p>
+          <p className="text-sm font-semibold text-ink">{title}</p>
+          <p className={`text-xs font-bold ${ready ? "text-[#0d4a2e]" : "text-[#5c3b08]"}`}>{status}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {onLoadBlank && !ready ? (
@@ -275,7 +278,7 @@ function Slot({
         </ul>
       ) : null}
       {pending ? <p className="mt-2 text-sm font-medium text-ink">הקובץ נקלט ומסיים קליטה למגירה.</p> : null}
-      {ready && !fieldsRead ? <p className="mt-2 text-sm font-medium leading-6 text-[#0d4a2e]">{RECEIVED_NOTE}</p> : null}
+      {ready && !fieldsRead ? <p className="mt-2 text-xs font-medium leading-5 text-[#0d4a2e]">{RECEIVED_NOTE}</p> : null}
       {error ? (
         <p className="mt-2 text-sm font-semibold leading-6 text-clay" role="alert">
           {error}
@@ -301,20 +304,20 @@ function FileRow({
   onView: (file: DrawerFile) => void;
 }) {
   return (
-    <li className="flex flex-wrap items-center gap-2 rounded-md border-2 border-ink/15 bg-white px-3 py-2">
+    <li className="flex flex-wrap items-center gap-2 rounded-md border border-ink/15 bg-white px-3 py-2">
       <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink" title={file.name}>
         {file.name}
       </span>
       <button
         type="button"
-        className="inline-flex h-9 items-center rounded-md border-2 border-tide px-2 text-xs font-bold text-tide transition duration-200 hover:-translate-y-0.5"
+        className="inline-flex h-9 items-center rounded-md border border-tide px-2 text-xs font-bold text-tide transition duration-200 hover:-translate-y-0.5"
         onClick={() => onView(file)}
       >
         צפה בקובץ 👁
       </button>
       <button
         type="button"
-        className="inline-flex h-9 items-center rounded-md border-2 border-clay px-2 text-xs font-bold text-clay transition duration-200 hover:-translate-y-0.5"
+        className="inline-flex h-9 items-center rounded-md border border-clay px-2 text-xs font-bold text-clay transition duration-200 hover:-translate-y-0.5"
         onClick={() => void onRemove(fromSlot, file.id)}
       >
         הסר ✕
@@ -322,7 +325,7 @@ function FileRow({
       <label className="text-xs font-semibold text-ink">
         <span className="sr-only">העבר למגירה</span>
         <select
-          className="h-9 max-w-44 rounded-md border-2 border-ink/25 bg-white px-2 text-xs font-semibold text-ink"
+          className="h-9 max-w-44 rounded-md border border-ink/25 bg-white px-2 text-xs font-semibold text-ink"
           value=""
           aria-label={`העבר את ${file.name} למגירה`}
           onChange={(event) => {
@@ -350,8 +353,8 @@ function FileButton({ label, quiet, onFile }: { label: string; quiet?: boolean; 
     <label
       className={
         quiet
-          ? "inline-flex h-11 cursor-pointer items-center text-sm font-semibold text-tide underline"
-          : "inline-flex h-11 cursor-pointer items-center rounded-md bg-ink px-3 text-sm font-semibold text-white transition duration-200 hover:-translate-y-0.5"
+          ? "inline-flex h-8 cursor-pointer items-center text-xs font-semibold text-tide underline"
+          : "inline-flex h-8 cursor-pointer items-center rounded-md bg-ink px-2.5 text-xs font-semibold text-white"
       }
     >
       {label}

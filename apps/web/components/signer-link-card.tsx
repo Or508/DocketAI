@@ -56,6 +56,7 @@ export function SignerLinkCard({
   verificationId,
   processKey,
   onRevoked,
+  embedded = false,
 }: {
   caseId: string;
   clientName: string;
@@ -66,6 +67,7 @@ export function SignerLinkCard({
   verificationId: string | null;
   processKey: string;
   onRevoked?: (workspace: CaseWorkspace) => void;
+  embedded?: boolean;
 }) {
   const [link, setLink] = useState<SigningLinkRead | null>(null);
   const [freshUrl, setFreshUrl] = useState<string | null>(null);
@@ -150,12 +152,12 @@ export function SignerLinkCard({
   const open = link?.state === "open" && Boolean(signingUrl);
 
   return (
-    <section className="rounded-lg border-2 border-tide bg-white shadow-card">
-      <div className="border-b border-line px-4 py-4">
-        <h2 className="font-serif text-2xl">שליחה לאישור וחתימת לקוח</h2>
-        <p className="mt-2 text-sm leading-6 text-ink">הלקוח בודק את הפרטים האישיים וחותם. הוא לא ממלא את הטופס.</p>
+    <section className={embedded ? "border-t border-ink/10 pt-4" : "rounded-lg border border-tide bg-white shadow-card"}>
+      <div className={embedded ? "" : "border-b border-line px-4 py-4"}>
+        <h3 className={embedded ? "text-sm font-bold text-tide" : "font-serif text-2xl"}>שליחה לאישור וחתימת לקוח</h3>
+        <p className="mt-1 text-sm leading-6 text-ink">הלקוח בודק את הפרטים האישיים וחותם. הוא לא ממלא את הטופס.</p>
       </div>
-      <div className="space-y-3 px-4 py-4 text-sm">
+      <div className={embedded ? "mt-3 space-y-3 text-sm" : "space-y-3 px-4 py-4 text-sm"}>
         {link ? (
           <p>
             {link.state === "open"

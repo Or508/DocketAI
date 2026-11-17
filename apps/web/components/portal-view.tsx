@@ -149,7 +149,7 @@ export function PortalViewScreen({ token }: { token: string }) {
           return (
             <li
               key={number}
-              className={`rounded-md border-2 px-3 py-2 text-center font-semibold ${current ? "border-tide bg-tide text-white" : done ? "border-moss bg-[#e7f5ee] text-[#0d4a2e]" : "border-ink/15 bg-white text-ink"}`}
+              className={`rounded-md border px-3 py-2 text-center font-semibold ${current ? "border-tide bg-tide text-white" : done ? "border-moss bg-[#e7f5ee] text-[#0d4a2e]" : "border-ink/15 bg-white text-ink"}`}
               aria-current={current ? "step" : undefined}
             >
               {number}. {label}
@@ -164,7 +164,7 @@ export function PortalViewScreen({ token }: { token: string }) {
           return (
             <p
               key={label}
-              className={`rounded-md border-2 px-2 py-2 text-center font-semibold leading-5 ${current ? "border-tide bg-tide text-white" : "border-ink/15 bg-white text-ink"}`}
+              className={`rounded-md border px-2 py-2 text-center font-semibold leading-5 ${current ? "border-tide bg-tide text-white" : "border-ink/15 bg-white text-ink"}`}
               aria-current={current ? "step" : undefined}
             >
               {number}. {label}
@@ -174,7 +174,7 @@ export function PortalViewScreen({ token }: { token: string }) {
       </nav>
       {notice ? (
         <p
-          className={`rounded-md border-2 px-4 py-3 text-sm font-semibold ${
+          className={`rounded-md border px-4 py-3 text-sm font-semibold ${
             notice.startsWith("המסמך התקבל")
               ? "border-moss bg-[#e7f3ea] text-[#145c38]"
               : "border-amberink bg-[#fbf3e4] text-[#4a3208]"
@@ -185,7 +185,7 @@ export function PortalViewScreen({ token }: { token: string }) {
         </p>
       ) : null}
       {step === 1 ? (
-        <section className="rounded-lg border-2 border-ink/15 bg-white p-6 shadow-card">
+        <section className="rounded-lg border border-ink/15 bg-white p-6 shadow-card">
           <h2 className="font-serif text-3xl">בדיקת פרטים והסברים</h2>
           <p className="mt-3 text-sm leading-7">
             אלה הפרטים האישיים שנרשמו בטופס, והמקום בטופס שבו כל פרט נכתב. אין כאן מה להקליד.
@@ -212,7 +212,7 @@ export function PortalViewScreen({ token }: { token: string }) {
           ) : null}
           <ul className="mt-4 space-y-3">
             {view.process.required_fields.map((field) => (
-              <li key={field.key} className="rounded-md border-2 border-ink/10 px-3 py-3">
+              <li key={field.key} className="rounded-md border border-ink/10 px-3 py-3">
                 <p className="font-semibold">{FIELD_LABEL[field.key] ?? field.label_he ?? field.label}</p>
                 <p className="mt-1 text-sm" dir="auto">
                   {view.field_values[field.key] || "עדיין ריק"}
@@ -227,12 +227,12 @@ export function PortalViewScreen({ token }: { token: string }) {
         </section>
       ) : null}
       {step === 2 ? (
-        <section className="min-w-0 rounded-lg border-2 border-ink/15 bg-white shadow-card">
-          <div className="border-b-2 border-ink/10 px-4 py-4">
+        <section className="min-w-0 rounded-lg border border-ink/15 bg-white shadow-card">
+          <div className="border-b border-ink/10 px-4 py-4">
             <h2 className="font-serif text-2xl">צפייה בטופס המלא</h2>
           </div>
           <div className="min-w-0 overflow-hidden px-4 py-4">
-            <details className="mb-4 rounded-md border-2 border-ink/10 bg-[#fbf8f2] px-3 py-3" open>
+            <details className="mb-4 rounded-md border border-ink/10 bg-[#fbf8f2] px-3 py-3" open>
               <summary className="cursor-pointer font-semibold">סיכום הפרטים שמולאו עבורך בטופס</summary>
               <ul className="mt-3 grid gap-2">
                 {view.process.required_fields.map((field) => (
@@ -256,7 +256,7 @@ export function PortalViewScreen({ token }: { token: string }) {
         </section>
       ) : null}
       {step === 3 ? (
-        <section className="rounded-lg border-2 border-ink/15 bg-white p-4 shadow-card">
+        <section className="rounded-lg border border-ink/15 bg-white p-4 shadow-card">
           <h2 className="font-serif text-2xl">חתימה דיגיטלית</h2>
           <div className="mt-4 md:hidden">
             <SignatureForm busy={busy} consentLabel={PORTAL_CONSENT_HE} notice={RECORDING} alert={notice} onSign={sign} />
@@ -307,14 +307,14 @@ function ClientUpload({
 }) {
   const [drawer, setDrawer] = useState<(typeof CLIENT_DRAWERS)[number]["id"]>("id_copy");
   return (
-    <div className="mt-5 rounded-md border-2 border-ink/15 bg-[#fbf8f2] p-4">
+    <div className="mt-5 rounded-md border border-ink/15 bg-[#fbf8f2] p-4">
       <p className="font-semibold">העלאת מסמך מעודכן מהנייד (ת"ז / ארנונה / אישור בנק)</p>
       <label className="mt-3 block text-sm font-semibold" htmlFor="client-drawer">
         מגירה
       </label>
       <select
         id="client-drawer"
-        className="mt-1 h-11 w-full rounded-md border-2 border-ink/25 bg-white px-3 text-base"
+        className="mt-1 h-11 w-full rounded-md border border-ink/25 bg-white px-3 text-base"
         value={drawer}
         onChange={(event) => setDrawer(event.target.value as (typeof CLIENT_DRAWERS)[number]["id"])}
       >

@@ -57,8 +57,8 @@ export function InternalNotes({ caseId }: { caseId: string }) {
   }
 
   return (
-    <section className="rounded-lg border-2 border-ink/15 bg-white shadow-card" aria-label="הערות פנימיות לצוות המשרד">
-      <div className="border-b-2 border-ink/10 px-4 py-4">
+    <section className="rounded-lg border border-ink/15 bg-white shadow-card" aria-label="הערות פנימיות לצוות המשרד">
+      <div className="border-b border-ink/10 px-4 py-4">
         <h2 className="font-serif text-2xl">הערות פנימיות לצוות המשרד</h2>
         <p className="mt-1 text-sm font-semibold text-clay">לשימוש פנימי של המשרד בלבד — לא מוצג ללקוח</p>
       </div>
@@ -73,7 +73,7 @@ export function InternalNotes({ caseId }: { caseId: string }) {
         {notes && notes.length > 0 ? (
           <ol className="space-y-3">
             {notes.map((note) => (
-              <li key={note.id} className="rounded-md border-2 border-ink/10 bg-paper px-3 py-3">
+              <li key={note.id} className="rounded-md border border-ink/10 bg-paper px-3 py-3">
                 <p className="whitespace-pre-wrap text-sm text-ink">{note.body}</p>
                 <p className="mt-2 text-xs font-semibold text-ink/70">
                   {note.author}

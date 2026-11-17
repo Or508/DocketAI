@@ -2,6 +2,8 @@
 
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 
+import { PublicBrand } from "@/app/verify/public-brand";
+
 type Drawer = { document_type: string; label_he: string; filled: boolean; filename: string | null };
 
 type Intake = {
@@ -110,10 +112,12 @@ export function UploadScreen({ token }: { token: string }) {
   }
 
   return (
-    <main className="mx-auto w-full max-w-xl px-4 pb-16 pt-8 sm:pt-12">
+    <>
+    <PublicBrand frame="max-w-xl px-4" />
+    <main className="mx-auto w-full max-w-xl px-4 pb-16 pt-8 sm:pt-10">
       <header>
         <p className="text-sm font-semibold text-tide">קישור אישי ומאובטח מהמשרד</p>
-        <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl">העלאת מסמכים מאובטחת לתיק</h1>
+        <h1 className="mt-2 text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">העלאת מסמכים מאובטחת לתיק</h1>
       </header>
 
       {view.kind === "loading" ? (
@@ -161,7 +165,7 @@ export function UploadScreen({ token }: { token: string }) {
           {view.intake.all_drawers_filled ? (
             <section
               role="status"
-              className="mt-6 rounded-lg border-2 border-moss/50 bg-white p-5 shadow-card"
+              className="mt-6 rounded-lg border border-moss/50 bg-white p-5 shadow-card"
             >
               <h2 className="font-serif text-2xl text-moss">כל המסמכים התקבלו ✓</h2>
               <p className="mt-2 text-mist">
@@ -172,10 +176,30 @@ export function UploadScreen({ token }: { token: string }) {
           ) : null}
 
           <section className="mt-6" aria-labelledby="needed-title">
-            <h2 id="needed-title" className="text-sm font-semibold">
-              המסמכים הנדרשים
-            </h2>
-            <ul className="mt-2 space-y-3">
+            <div className="flex items-end justify-between gap-3">
+              <h2 id="needed-title" className="text-sm font-semibold">
+                המסמכים הנדרשים
+              </h2>
+              <p className="text-sm text-mist">
+                התקבלו{" "}
+                <span className="font-semibold tabular-nums text-ink">
+                  {view.intake.required_drawers.filter((drawer) => drawer.filled).length}
+                </span>{" "}
+                מתוך <span className="tabular-nums">{view.intake.required_drawers.length}</span>
+              </p>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink/10" aria-hidden>
+              <div
+                className="h-full rounded-full bg-moss transition-all duration-500"
+                style={{
+                  width: `${Math.round(
+                    (100 * view.intake.required_drawers.filter((drawer) => drawer.filled).length) /
+                      Math.max(view.intake.required_drawers.length, 1),
+                  )}%`,
+                }}
+              />
+            </div>
+            <ul className="mt-4 space-y-3">
               {view.intake.required_drawers.map((drawer) => (
                 <DrawerRow
                   key={drawer.document_type}
@@ -188,7 +212,7 @@ export function UploadScreen({ token }: { token: string }) {
             </ul>
           </section>
 
-          <section className="mt-6 rounded-lg border-2 border-ink/15 bg-white p-5 shadow-card">
+          <section className="mt-6 rounded-lg border border-ink/15 bg-white p-5 shadow-card">
             <h2 className="font-semibold">העלאת כמה מסמכים בבת אחת</h2>
             <p className="mt-1 text-sm text-mist">
               בחרו עד {MAX_FILES} קבצים יחד. נזהה לבד איזה מסמך הוא מה ונתייק כל אחד במקומו.
@@ -215,7 +239,7 @@ export function UploadScreen({ token }: { token: string }) {
 
           <div aria-live="polite">
             {error ? (
-              <p role="alert" className="mt-4 rounded-lg border-2 border-clay/40 bg-white p-4 font-medium text-clay">
+              <p role="alert" className="mt-4 rounded-lg border border-clay/40 bg-white p-4 font-medium text-clay">
                 {error}
               </p>
             ) : null}
@@ -228,6 +252,7 @@ export function UploadScreen({ token }: { token: string }) {
         </>
       ) : null}
     </main>
+    </>
   );
 }
 
@@ -245,7 +270,7 @@ function DrawerRow({
   const picker = useRef<HTMLInputElement>(null);
   return (
     <li
-      className={`rounded-lg border-2 bg-white p-4 shadow-card ${drawer.filled ? "border-moss/40" : "border-ink/15"}`}
+      className={`rounded-lg border bg-white p-4 shadow-card ${drawer.filled ? "border-moss/40" : "border-ink/15"}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -261,7 +286,7 @@ function DrawerRow({
         {drawer.filled ? (
           <span className="shrink-0 rounded-full bg-moss px-3 py-1 text-sm font-semibold text-white">התקבל ✓</span>
         ) : (
-          <span className="shrink-0 rounded-full border border-amberink/40 bg-paper px-3 py-1 text-sm font-semibold text-amberink">
+          <span className="shrink-0 rounded-full border border-[#f1dfbd] bg-[#fdf5e6] px-3 py-1 text-sm font-semibold text-[#7a4f0f]">
             חסר
           </span>
         )}
@@ -284,7 +309,7 @@ function DrawerRow({
         disabled={busy}
         onClick={() => picker.current?.click()}
         aria-label={`${drawer.filled ? "החלפת" : "העלאת"} ${drawer.label_he}`}
-        className={`mt-3 w-full rounded-md border-2 px-4 py-3 font-semibold transition-opacity disabled:opacity-60 ${
+        className={`mt-3 w-full rounded-md border px-4 py-3 font-semibold transition-opacity disabled:opacity-60 ${
           drawer.filled ? "border-line bg-white text-ink" : "border-tide bg-white text-tide"
         }`}
       >
@@ -297,7 +322,7 @@ function DrawerRow({
 function Results({ files }: { files: RoutedFile[] }) {
   const received = files.filter((file) => file.outcome === "received").length;
   return (
-    <section className="mt-4 rounded-lg border-2 border-ink/15 bg-white p-5 shadow-card">
+    <section className="mt-4 rounded-lg border border-ink/15 bg-white p-5 shadow-card">
       <h2 className="font-semibold">
         {received === files.length
           ? files.length === 1
@@ -327,7 +352,7 @@ function Results({ files }: { files: RoutedFile[] }) {
 
 function Notice({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section role="alert" className="mt-8 rounded-lg border-2 border-ink/15 bg-white p-6 shadow-card">
+    <section role="alert" className="mt-8 rounded-lg border border-ink/15 bg-white p-6 shadow-card">
       <h2 className="font-serif text-2xl">{title}</h2>
       <div className="mt-2 text-mist">{children}</div>
     </section>

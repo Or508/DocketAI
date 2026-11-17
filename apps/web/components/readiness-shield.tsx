@@ -29,12 +29,14 @@ export function ReadinessShield({
   intake,
   loadingForm,
   onLoadBlank,
+  embedded = false,
 }: {
   caseId: string;
   workspace: CaseWorkspace;
   intake: IntakeSummary | null;
   loadingForm: boolean;
   onLoadBlank?: () => Promise<void>;
+  embedded?: boolean;
 }) {
   const processType = processTypeOf(workspace);
   const formLoaded = (intake?.forms ?? []).some((item) => item.role === "form");
@@ -56,10 +58,10 @@ export function ReadinessShield({
   const integrity = useIntegrity(caseId, workspace.case.updated_at);
 
   return (
-    <section className="rounded-lg border-2 border-ink/15 bg-white p-4 shadow-card" aria-label="בדיקת תקינות ומוכנות לפני שליחה לחתימה">
-      <h2 className="font-serif text-2xl">בדיקת מוכנות התיק לחתימה</h2>
-      <ul className="mt-4 grid gap-3 text-sm">
-        <li className="rounded-md border-2 border-ink/10 px-3 py-3">
+    <section className={embedded ? "" : "rounded-lg border border-ink/15 bg-white p-4 shadow-card"} aria-label="בדיקת תקינות ומוכנות לפני שליחה לחתימה">
+      <h3 className={embedded ? "text-sm font-bold text-tide" : "font-serif text-2xl"}>בדיקת מוכנות התיק לחתימה</h3>
+      <ul className={`grid gap-3 text-sm ${embedded ? "mt-3" : "mt-4"}`}>
+        <li className="rounded-md border border-ink/10 px-3 py-3">
           <p className="font-semibold">טופס יעד טעון</p>
           {formLoaded ? (
             <p className="mt-1 font-semibold text-[#0d4a2e]">✓ הטופס נמצא במגירה</p>
@@ -74,7 +76,7 @@ export function ReadinessShield({
             </div>
           )}
         </li>
-        <li className="rounded-md border-2 border-ink/10 px-3 py-3">
+        <li className="rounded-md border border-ink/10 px-3 py-3">
           <p className="font-semibold">מסמכי מקור במגירות</p>
           <p className="mt-1">
             {filledDrawers.length} מתוך {drawers.length} מגירות מלאות
@@ -84,7 +86,7 @@ export function ReadinessShield({
             גלילה למגירות
           </button>
         </li>
-        <li className="rounded-md border-2 border-ink/10 px-3 py-3">
+        <li className="rounded-md border border-ink/10 px-3 py-3">
           <p className="font-semibold">שלמות שדות ואימות ת״ז/נייד</p>
           <p className="mt-1">
             {validFields} מתוך {fields.length} שדות תקינים
@@ -95,7 +97,7 @@ export function ReadinessShield({
                 <li key={problem.key}>
                   <button
                     type="button"
-                    className="rounded-full border-2 border-amberink bg-[#f6e4c4] px-2 py-1 text-xs font-bold text-[#4a3208]"
+                    className="rounded-full border border-amberink bg-[#f6e4c4] px-2 py-1 text-xs font-bold text-[#4a3208]"
                     onClick={() => focusField(problem.key)}
                   >
                     {problem.label}: {problem.issue}
@@ -151,7 +153,7 @@ function IntegrityChecks({ report }: { report: IntegrityReport }) {
   const tone = report.status === "pass" ? "text-[#0d4a2e]" : report.status === "warn" ? "text-[#4a3208]" : "text-clay";
   const mark = report.status === "pass" ? "תקין" : report.status === "warn" ? "נדרשת בדיקה" : "חסום";
   return (
-    <li className="rounded-md border-2 border-ink/10 px-3 py-3">
+    <li className="rounded-md border border-ink/10 px-3 py-3">
       <p className="font-semibold">בדיקות השרת</p>
       <p className={`mt-1 font-semibold ${tone}`}>
         {mark} · ציון שרת {report.score}%
@@ -161,7 +163,7 @@ function IntegrityChecks({ report }: { report: IntegrityReport }) {
           <li key={check.code}>
             <button
               type="button"
-              className={`w-full rounded-md border-2 px-2 py-2 text-start text-xs font-semibold ${checkTone(check.status)}`}
+              className={`w-full rounded-md border px-2 py-2 text-start text-xs font-semibold ${checkTone(check.status)}`}
               onClick={() => openCheck(check)}
             >
               <span className="block">

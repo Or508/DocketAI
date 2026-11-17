@@ -79,12 +79,11 @@ export function TemplatesScreen() {
   }, [load]);
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
+    <main className="mx-auto min-h-screen max-w-6xl px-5 py-6 lg:px-10 lg:py-10">
       <OfficeTopNav />
-      <header className="mt-4 flex flex-wrap items-end justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-tide">ארון תיוק ובקרת מסמכים</p>
-          <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl">קטלוג טפסים ותבניות אוטומציה</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-ink">טפסים ותבניות</h1>
           <p className="mt-3 max-w-2xl text-mist">
             כל טופס שהמשרד ממלא: אילו מסמכים הוא דורש מהלקוח, אילו שדות מתמלאים מתוכם, והאם הטופס הריק זמין במערכת.
           </p>
@@ -92,7 +91,7 @@ export function TemplatesScreen() {
       </header>
 
       {error ? (
-        <div role="alert" className="mt-8 rounded-lg border-2 border-clay/40 bg-white p-5">
+        <div role="alert" className="mt-8 rounded-lg border border-clay/40 bg-white p-5">
           <p className="font-medium text-clay">{error}</p>
           <button type="button" onClick={() => void load()} className="mt-3 text-sm font-semibold text-tide underline">
             ניסיון נוסף
@@ -116,7 +115,7 @@ function TemplateCard({ template }: { template: Template }) {
   const ready = template.default_template_available;
   const headingId = `template-${template.process_type}`;
   return (
-    <article aria-labelledby={headingId} className="rounded-lg border-2 border-ink/15 bg-white p-6 shadow-card">
+    <article aria-labelledby={headingId} className="rounded-lg border border-ink/15 bg-white p-6 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <p dir="ltr" className="text-right font-mono text-xs text-mist">
@@ -134,7 +133,7 @@ function TemplateCard({ template }: { template: Template }) {
             </span>
           ) : null}
           <span
-            className={`rounded-full border-2 px-3 py-1 text-sm font-semibold ${
+            className={`rounded-full border px-3 py-1 text-sm font-semibold ${
               ready ? "border-moss bg-moss/10 text-moss" : "border-amberink bg-amberink/10 text-amberink"
             }`}
           >
@@ -183,7 +182,7 @@ function TemplateCard({ template }: { template: Template }) {
         <div className="mt-2 overflow-x-auto">
           <table className="w-full min-w-[36rem] border-collapse text-sm">
             <thead>
-              <tr className="border-b-2 border-line text-right text-mist">
+              <tr className="border-b border-line text-right text-mist">
                 <th scope="col" className="py-2 pl-3 font-semibold">
                   שדה
                 </th>
@@ -307,7 +306,7 @@ function OpenCase({ template }: { template: Template }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-6 rounded-md border-2 border-tide/30 bg-tide/5 p-4">
+    <form onSubmit={onSubmit} className="mt-6 rounded-md border border-tide/30 bg-tide/5 p-4">
       <label htmlFor={inputId} className="block text-sm font-semibold">
         שם הלקוח
       </label>
@@ -320,7 +319,7 @@ function OpenCase({ template }: { template: Template }) {
           value={client}
           onChange={(event) => setClient(event.target.value)}
           disabled={busy !== null}
-          className="min-w-0 flex-1 rounded-md border-2 border-line bg-white px-3 py-2 outline-none focus:border-tide"
+          className="min-w-0 flex-1 rounded-md border border-line bg-white px-3 py-2 outline-none focus:border-tide"
         />
         <button
           type="submit"

@@ -8,19 +8,48 @@
 
 body {
   min-height: 100vh;
-  background-color: #f4f0e6;
-  background-image: radial-gradient(rgba(20, 16, 12, 0.06) 0.7px, transparent 0.7px);
-  background-size: 8px 8px;
-  color: #16130f;
+  background-color: #f6f6f3;
+  color: #1b1a17;
+  font-feature-settings: "kern";
+  text-rendering: optimizeLegibility;
+}
+
+/* The office top bar is fixed to the top of the window. Every office screen starts below it. */
+body:has([data-office-shell]) {
+  padding-top: 4rem;
+}
+
+@media print {
+  body:has([data-office-shell]) {
+    padding-top: 0;
+  }
+}
+
+@layer utilities {
+  /* A row that scrolls sideways on narrow screens without showing a scrollbar. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer components {
+  /* Headings that used the old serif keep their place in the hierarchy through weight. */
+  .font-serif {
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
 }
 
 :focus-visible {
-  outline: 3px solid #0b3a38;
-  outline-offset: 3px;
+  outline: 2px solid #0e4f49;
+  outline-offset: 2px;
 }
 
 ::selection {
-  background: #c9dedb;
+  background: #cfe5e1;
 }
 
 input,

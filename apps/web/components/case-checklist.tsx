@@ -164,7 +164,7 @@ function Bucket({
   children: ReactNode;
 }) {
   return (
-    <div className={`mt-5 border-s-2 ps-4 ${tone}`}>
+    <div className={`mt-5 border-s ps-4 ${tone}`}>
       <h3 className="text-xs uppercase tracking-[0.16em] text-mist">
         {title} · {count}
       </h3>

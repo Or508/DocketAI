@@ -80,19 +80,18 @@ export function AnalyticsScreen() {
   const processes = summary?.by_process_type.filter((item) => item.total > 0) ?? [];
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
+    <main className="mx-auto min-h-screen max-w-6xl px-5 py-6 lg:px-10 lg:py-10">
       <OfficeTopNav />
-      <header className="mt-4 flex flex-wrap items-end justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-tide">ארון תיוק ובקרת מסמכים</p>
-          <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl">דוחות, מדדי ביצוע וייצוא לאקסל</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-ink">דוחות ומדדים</h1>
           <p className="mt-3 max-w-2xl text-mist">
             תמונת מצב של תיקי המשרד: כמה בהכנה, כמה ממתינים לחתימה וכמה נחתמו, וכמה מהעבודה נעשתה אוטומטית מתוך המסמכים.
           </p>
         </div>
       </header>
 
-      <section className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-lg border-2 border-tide/30 bg-tide/5 p-5">
+      <section className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-tide/30 bg-tide/5 p-5">
         <div className="min-w-0">
           <h2 className="font-semibold">דוח תיקים מלא</h2>
           <p className="mt-1 text-sm text-mist">
@@ -109,7 +108,7 @@ export function AnalyticsScreen() {
       </section>
 
       {error ? (
-        <div role="alert" className="mt-6 rounded-lg border-2 border-clay/40 bg-white p-5">
+        <div role="alert" className="mt-6 rounded-lg border border-clay/40 bg-white p-5">
           <p className="font-medium text-clay">{error}</p>
           <button type="button" onClick={() => void load()} className="mt-3 text-sm font-semibold text-tide underline">
             ניסיון נוסף
@@ -130,7 +129,7 @@ export function AnalyticsScreen() {
             <Kpi label="זמן ממוצע לחתימת לקוח" value={duration.value} note={duration.unit} />
           </section>
 
-          <section className="mt-6 rounded-lg border-2 border-ink/15 bg-white p-6 shadow-card">
+          <section className="mt-6 rounded-lg border border-ink/15 bg-white p-6 shadow-card">
             <h2 className="font-serif text-xl">פילוח לפי סטטוס</h2>
             {summary.total_cases === 0 ? (
               <p className="mt-3 text-mist">עדיין לא נפתחו תיקים במשרד.</p>
@@ -162,7 +161,7 @@ export function AnalyticsScreen() {
             )}
           </section>
 
-          <section className="mt-6 rounded-lg border-2 border-ink/15 bg-white p-6 shadow-card">
+          <section className="mt-6 rounded-lg border border-ink/15 bg-white p-6 shadow-card">
             <h2 className="font-serif text-xl">פילוח לפי סוג תהליך</h2>
             {processes.length === 0 ? (
               <p className="mt-3 text-mist">אין תיקים להצגה.</p>
@@ -170,7 +169,7 @@ export function AnalyticsScreen() {
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full min-w-[32rem] border-collapse text-sm">
                   <thead>
-                    <tr className="border-b-2 border-line text-right text-mist">
+                    <tr className="border-b border-line text-right text-mist">
                       <th scope="col" className="py-2 pl-3 font-semibold">
                         תהליך
                       </th>
@@ -227,7 +226,7 @@ export function AnalyticsScreen() {
 
 function Kpi({ label, value, note }: { label: string; value: string; note: string }) {
   return (
-    <div className="rounded-lg border-2 border-ink/15 bg-white p-5 shadow-card">
+    <div className="rounded-lg border border-ink/15 bg-white p-5 shadow-card">
       <p className="text-sm font-semibold text-mist">{label}</p>
       <p className="mt-2 font-serif text-4xl leading-none">{value}</p>
       <p className="mt-2 text-sm text-mist">{note}</p>

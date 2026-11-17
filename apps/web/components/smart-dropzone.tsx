@@ -10,9 +10,11 @@ import { hebrewOfficeError } from "@/lib/hebrew";
 export function SmartDropzone({
   caseId,
   onUploaded,
+  compact = false,
 }: {
   caseId: string;
   onUploaded: (workspace: CaseWorkspace, notice: string) => void;
+  compact?: boolean;
 }) {
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -48,7 +50,7 @@ export function SmartDropzone({
 
   return (
     <section
-      className={`rounded-lg border-2 border-dashed bg-white p-5 shadow-card ${over ? "border-tide bg-[#e7f3f2]" : "border-tide/50"}`}
+      className={`rounded-lg border border-dashed bg-white ${compact ? "px-3 py-2.5" : "p-5 shadow-card"} ${over ? "border-tide bg-[#e7f3f2]" : "border-tide/50"}`}
       onDragOver={(event) => {
         event.preventDefault();
         setOver(true);
@@ -61,10 +63,10 @@ export function SmartDropzone({
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-serif text-2xl">העלאה חכמה מרוכזת (זרוק ת"ז, ארנונה ואישור בנק יחד)</h2>
-          <p className="mt-1 text-sm text-ink">אפשר לבחור או לגרור כמה קבצים יחד. המערכת ממיינת כל קובץ למגירה המתאימה.</p>
+          <h2 className={compact ? "text-sm font-semibold" : "font-serif text-2xl"}>העלאה חכמה מרוכזת (זרוק ת"ז, ארנונה ואישור בנק יחד)</h2>
+          {compact ? null : <p className="mt-1 text-sm text-ink">אפשר לבחור או לגרור כמה קבצים יחד. המערכת ממיינת כל קובץ למגירה המתאימה.</p>}
         </div>
-        <label className="inline-flex h-11 cursor-pointer items-center rounded-md bg-tide px-4 text-sm font-semibold text-white">
+        <label className={`inline-flex cursor-pointer items-center rounded-md bg-tide font-semibold text-white ${compact ? "h-8 px-3 text-xs" : "h-11 px-4 text-sm"}`}>
           {busy ? "ממיינים…" : "בחירת קבצים"}
           <input
             className="sr-only"

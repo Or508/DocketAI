@@ -74,7 +74,7 @@ export function ActivityTimeline({ caseId }: { caseId: string }) {
 
   return (
     <details
-      className="rounded-lg border-2 border-ink/15 bg-white shadow-card"
+      className="rounded-lg border border-ink/15 bg-white shadow-card"
       onToggle={(event) => {
         if (event.currentTarget.open && !loading) void load();
       }}
@@ -82,7 +82,7 @@ export function ActivityTimeline({ caseId }: { caseId: string }) {
       <summary className="cursor-pointer list-none px-4 py-4 font-serif text-2xl text-ink [&::-webkit-details-marker]:hidden">
         יומן פעילות וביקורת
       </summary>
-      <div className="border-t-2 border-ink/10 px-4 py-4">
+      <div className="border-t border-ink/10 px-4 py-4">
         {loading ? <p className="text-sm text-ink">טוען את היומן…</p> : null}
         {error ? (
           <p className="text-sm font-medium text-clay" role="alert">
@@ -93,7 +93,7 @@ export function ActivityTimeline({ caseId }: { caseId: string }) {
         {events && events.length > 0 ? (
           <ol className="grid gap-3">
             {events.map((item) => (
-              <li key={item.id} className="rounded-md border-2 border-ink/10 px-3 py-3">
+              <li key={item.id} className="rounded-md border border-ink/10 px-3 py-3">
                 <p className="font-semibold text-ink">{LABELS[item.action] ?? "אירוע בתיק"}</p>
                 <p className="mt-1 text-sm text-ink">
                   <time dateTime={item.at}>{israelTime(item.at)}</time>
@@ -123,7 +123,7 @@ function BadgeRow({ details }: { details: Record<string, unknown> }) {
         <li
           key={`${badge.label}-${badge.value}`}
           title={badge.value}
-          className="max-w-full truncate rounded-md border-2 border-tide/30 bg-[#e7f3f2] px-2 py-1 font-mono text-xs text-tide"
+          className="max-w-full truncate rounded-md border border-tide/30 bg-[#e7f3f2] px-2 py-1 font-mono text-xs text-tide"
           dir="ltr"
         >
           {badge.label}: {shorten(badge.value)}

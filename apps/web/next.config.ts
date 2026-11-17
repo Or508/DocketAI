@@ -7,6 +7,8 @@ const privateHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // A second server (a preview beside `next start`) builds into its own folder, never over .next.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   reactStrictMode: true,
   transpilePackages: ["@docketai/shared-types"],
   serverExternalPackages: ["pdfjs-dist"],

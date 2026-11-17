@@ -36,7 +36,7 @@ export function IntegrityPanel({
           קוד חותם דיגיטלי <span className="break-all font-mono text-xs">{seal.signer_verification_id}</span>
         </p>
         <a className="inline-flex text-sm font-semibold text-tide underline" href="/verify">
-          אימות החותם בציבור (/verify)
+          אימות החותם בדף הציבורי
         </a>
         <div>
           <p className="text-sm leading-6">טביעת האצבע של הקובץ החתום</p>

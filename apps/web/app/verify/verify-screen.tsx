@@ -4,6 +4,8 @@ import { DragEvent, FormEvent, useCallback, useEffect, useRef, useState } from "
 
 import { OfficeTopNav } from "@/components/OfficeTopNav";
 
+import { PublicBrand } from "./public-brand";
+
 type Seal = {
   valid: boolean;
   status: "valid" | "superseded";
@@ -26,8 +28,12 @@ const CODE = /^DV-[0-9A-F]{12}$/;
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
 const PROCESS_LABELS: Record<string, string> = {
   bl_6101: "טופס בל/6101 — ביטוח לאומי",
-  onboarding: "קליטת לקוח",
+  onboarding: "טופס 101 — קליטת עובד",
+  employee_onboarding: "טופס 101 — קליטת עובד חדש",
+  real_estate: "עסקת מקרקעין",
 };
+// A process this page does not know yet is still a signed document, never a raw key.
+const UNKNOWN_PROCESS = "מסמך חתום";
 
 async function sha256Hex(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -47,7 +53,7 @@ function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("he-IL", { dateStyle: "long", timeStyle: "short" }).format(date);
 }
 
-export function VerifyScreen({ initialCode }: { initialCode: string }) {
+export function VerifyScreen({ initialCode, office = false }: { initialCode: string; office?: boolean }) {
   const [code, setCode] = useState(initialCode);
   const [file, setFile] = useState<PickedFile | null>(null);
   const [hashing, setHashing] = useState(false);
@@ -145,18 +151,20 @@ export function VerifyScreen({ initialCode }: { initialCode: string }) {
   const working = busy || hashing;
 
   return (
-    <main className="mx-auto min-h-screen max-w-3xl px-5 py-10">
-      <OfficeTopNav />
-      <header className="mt-4">
+    <>
+    {office ? null : <PublicBrand frame="max-w-3xl px-5 lg:px-10" />}
+    <main className="mx-auto min-h-screen max-w-3xl px-5 py-6 lg:px-10 lg:py-10">
+      {office ? <OfficeTopNav /> : null}
+      <header className="mt-2">
         <p className="text-sm font-semibold text-tide">בדיקה ציבורית · ללא צורך בהתחברות</p>
-        <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl">אימות חותם קריפטוגרפי ומסמכים חתומים</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-ink">אימות חותם קריפטוגרפי ומסמכים חתומים</h1>
         <p className="mt-3 text-mist">
           כל מי שמחזיק במסמך חתום — הלקוח, המשרד או רשות חיצונית — יכול לבדוק כאן שהחתימה רשומה ותקפה, ושהקובץ שבידיו זהה
           בדיוק לקובץ שנחתם.
         </p>
       </header>
 
-      <form onSubmit={onSubmit} className="mt-8 rounded-lg border-2 border-ink/15 bg-white p-6 shadow-card">
+      <form onSubmit={onSubmit} className="mt-8 rounded-lg border border-ink/15 bg-white p-6 shadow-card">
         <label className="block text-sm font-semibold" htmlFor="verify-code">
           קוד אימות
         </label>
@@ -171,7 +179,7 @@ export function VerifyScreen({ initialCode }: { initialCode: string }) {
           placeholder="DV-XXXXXXXXXXXX"
           value={code}
           onChange={(event) => setCode(event.target.value.toUpperCase())}
-          className="mt-2 w-full rounded-md border-2 border-line bg-white px-3 py-2 text-left font-mono text-lg tracking-wider outline-none focus:border-tide"
+          className="mt-2 w-full rounded-md border border-line bg-white px-3 py-2 text-left font-mono text-lg tracking-wider outline-none focus:border-tide"
         />
 
         <p className="mt-6 text-sm font-semibold">הקובץ החתום (PDF)</p>
@@ -195,7 +203,7 @@ export function VerifyScreen({ initialCode }: { initialCode: string }) {
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
-          className={`mt-2 cursor-pointer rounded-md border-2 border-dashed px-4 py-8 text-center outline-none transition-colors focus-visible:border-tide ${
+          className={`mt-2 cursor-pointer rounded-md border border-dashed px-4 py-8 text-center outline-none transition-colors focus-visible:border-tide ${
             dragging ? "border-tide bg-tide/5" : "border-line bg-paper/50 hover:border-tide"
           }`}
         >
@@ -245,12 +253,12 @@ export function VerifyScreen({ initialCode }: { initialCode: string }) {
 
       <section aria-live="polite" className="mt-6">
         {outcome?.kind === "error" ? (
-          <p role="alert" className="rounded-lg border-2 border-clay/40 bg-white p-4 font-medium text-clay">
+          <p role="alert" className="rounded-lg border border-clay/40 bg-white p-4 font-medium text-clay">
             {outcome.message}
           </p>
         ) : null}
         {outcome?.kind === "missing" ? (
-          <div role="alert" className="rounded-lg border-2 border-clay/40 bg-white p-5">
+          <div role="alert" className="rounded-lg border border-clay/40 bg-white p-5">
             <p className="text-lg font-semibold text-clay">
               {outcome.by === "file" ? "הקובץ אינו תואם לאף חותם רשום" : "לא נמצא חותם תחת קוד האימות הזה"}
             </p>
@@ -264,6 +272,7 @@ export function VerifyScreen({ initialCode }: { initialCode: string }) {
         {outcome?.kind === "seal" ? <SealResult seal={outcome.seal} /> : null}
       </section>
     </main>
+    </>
   );
 }
 
@@ -292,19 +301,21 @@ function SealResult({ seal }: { seal: Seal }) {
         </Badge>
       ) : null}
 
-      <dl className="rounded-lg border-2 border-ink/15 bg-white p-5 shadow-card">
+      <dl className="rounded-lg border border-ink/15 bg-white p-5 shadow-card">
         <Row label="קוד אימות">
           <span dir="ltr" className="font-mono">
             {seal.verification_id}
           </span>
         </Row>
         <Row label="מצב החותם">{seal.valid ? "תקף" : "הוחלף"}</Row>
-        <Row label="סוג המסמך">{PROCESS_LABELS[seal.process_type] ?? seal.process_type}</Row>
+        <Row label="סוג המסמך">{PROCESS_LABELS[seal.process_type] ?? UNKNOWN_PROCESS}</Row>
         <Row label="החותם/ת">{seal.masked_client_name || "—"}</Row>
         <Row label="מועד החתימה">{formatDate(seal.signed_at)}</Row>
         <Row label="טביעת אצבע רשומה (SHA-256)">
-          <span dir="ltr" className="block break-all text-left font-mono text-xs">
-            {seal.signed_pdf_sha256}
+          {/* Two even halves of 32 characters, so the hash never breaks off a single character. */}
+          <span dir="ltr" className="block break-all text-left font-mono text-xs leading-5">
+            <span className="block">{seal.signed_pdf_sha256.slice(0, 32)}</span>
+            <span className="block">{seal.signed_pdf_sha256.slice(32)}</span>
           </span>
         </Row>
         <Row label="התאמת הקובץ" last>
@@ -342,7 +353,7 @@ function Badge({
   children: React.ReactNode;
 }) {
   return (
-    <div role="status" className={`flex gap-4 rounded-lg border-2 p-5 ${TONES[tone]}`}>
+    <div role="status" className={`flex gap-4 rounded-lg border p-5 ${TONES[tone]}`}>
       <span
         aria-hidden
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white ${MARKS[tone]}`}

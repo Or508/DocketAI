@@ -126,10 +126,10 @@ export function FieldVerification({
   }
 
   return (
-    <section className="rounded-lg border-2 border-ink/15 bg-white shadow-card">
-      <div className="border-b-2 border-ink/10 px-4 py-4">
+    <section className="rounded-lg border border-ink/15 bg-white shadow-card">
+      <div className="border-b border-ink/10 px-4 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-serif text-2xl">בקרת ותיקון פרטים אישיים לפני חתימה</h2>
+          <h2 className="font-serif text-xl">בקרת ותיקון פרטים אישיים</h2>
           <Button type="button" variant="outline" disabled={busy || dirty.length === 0} onClick={() => void saveAll()}>
             שמור את כל השדות
           </Button>
@@ -143,8 +143,8 @@ export function FieldVerification({
           const fields = process.required_fields.filter((field) => group.keys.includes(field.key));
           if (!fields.length) return null;
           return (
-            <fieldset key={group.title} className="space-y-3">
-              <legend className="text-sm font-bold text-tide">{group.title}</legend>
+            <fieldset key={group.title} className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <legend className="col-span-full text-sm font-bold text-tide">{group.title}</legend>
               {fields.map((field) => (
                 <FieldRow
                   key={field.key}
@@ -165,8 +165,8 @@ export function FieldVerification({
           );
         })}
         {rest.length ? (
-          <fieldset className="space-y-3">
-            <legend className="text-sm font-bold text-tide">פרטים נוספים</legend>
+          <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <legend className="col-span-full text-sm font-bold text-tide">פרטים נוספים</legend>
             {rest.map((field) => (
               <FieldRow
                 key={field.key}
@@ -224,13 +224,13 @@ function FieldRow({
   const waiting = badge === "ממתין להשלמת משרד";
   return (
     <label className="block text-sm" htmlFor={`field-${field.key}`}>
-      <span className="mb-1 flex flex-wrap items-center justify-between gap-2">
+      <span className="mb-1 flex flex-wrap items-center gap-1.5">
         <span className="font-semibold text-ink">{FIELD_LABEL[field.key] ?? field.label_he ?? field.label}</span>
-        <span className="flex flex-wrap items-center gap-2">
+        <span className="flex flex-wrap items-center gap-1">
           {source && onViewSource ? (
             <button
               type="button"
-              className="inline-flex h-8 items-center rounded-md border-2 border-ink/20 bg-white px-2 text-xs font-semibold text-ink"
+              className="inline-flex h-6 items-center rounded-md border border-ink/20 bg-white px-1.5 text-[11px] font-semibold text-ink"
               onClick={(event) => {
                 event.preventDefault();
                 onViewSource(source);
@@ -241,12 +241,12 @@ function FieldRow({
           ) : null}
           {checkLabel ? (
             <span
-              className={`rounded-full border-2 px-2 py-0.5 text-xs font-bold ${checkTone === "valid" ? "border-moss bg-[#e7f5ee] text-[#0d4a2e]" : "border-amberink bg-[#f6e4c4] text-[#4a3208]"}`}
+              className={`rounded-full border px-1.5 py-0.5 text-[11px] font-bold ${checkTone === "valid" ? "border-moss bg-[#e7f5ee] text-[#0d4a2e]" : "border-amberink bg-[#f6e4c4] text-[#4a3208]"}`}
             >
               {checkLabel}
             </span>
           ) : null}
-          <span className={`rounded-full border-2 px-2 py-0.5 text-xs font-bold ${waiting ? "border-amberink bg-[#f6e4c4] text-[#4a3208]" : "border-moss bg-[#e7f5ee] text-[#0d4a2e]"}`}>
+          <span className={`rounded-full border px-1.5 py-0.5 text-[11px] font-bold ${waiting ? "border-amberink bg-[#f6e4c4] text-[#4a3208]" : "border-moss bg-[#e7f5ee] text-[#0d4a2e]"}`}>
             {badge}
           </span>
         </span>

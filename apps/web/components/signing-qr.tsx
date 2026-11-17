@@ -24,7 +24,7 @@ export function SigningQr({ value }: { value: string }) {
 
   if (!svg) return null;
   return (
-    <figure className="shrink-0 rounded-md border-2 border-ink/15 bg-white p-2">
+    <figure className="shrink-0 rounded-md border border-ink/15 bg-white p-2">
       <div
         className="h-[148px] w-[148px] [&_svg]:h-full [&_svg]:w-full"
         aria-label="קוד QR לקישור החתימה"

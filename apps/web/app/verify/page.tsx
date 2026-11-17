@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
+
+import { OFFICE_COOKIE } from "@/lib/server/office-session";
 
 import { VerifyScreen } from "./verify-screen";
 
@@ -15,5 +18,8 @@ export default async function VerifyPage({
 }) {
   const params = await searchParams;
   const raw = Array.isArray(params.code) ? params.code[0] : params.code;
-  return <VerifyScreen initialCode={(raw ?? "").trim().toUpperCase().slice(0, 32)} />;
+  // The office reaches this page from its own bar and keeps it; a client or an outside party
+  // sees only the public header. The cookie decides which header, never what the check shows.
+  const office = Boolean((await cookies()).get(OFFICE_COOKIE)?.value);
+  return <VerifyScreen initialCode={(raw ?? "").trim().toUpperCase().slice(0, 32)} office={office} />;
 }

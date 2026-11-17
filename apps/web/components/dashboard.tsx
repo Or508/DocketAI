@@ -4,13 +4,13 @@ import type { CaseRead, CaseWorkspace, ProcessRead } from "@docketai/shared-type
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Download, FolderOpen, PenLine, Plus, Search, Trash2 } from "lucide-react";
 
 import { StatusPill } from "@/components/status-pill";
 import { WhatsAppReminder } from "@/components/whatsapp-reminder";
-import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { OfficeBar } from "@/components/office-bar";
 import { OfficeTopNav } from "@/components/OfficeTopNav";
 import { ApiError, api, detailFrom, downloadCaseArchive } from "@/lib/api";
 import { archiveFilename } from "@/lib/dispatch";
@@ -21,7 +21,7 @@ import { formatWhen } from "@/lib/utils";
 
 type Bucket = "all" | "preparing" | "awaiting" | "done";
 
-const FILTERS: { id: Bucket; label: string }[] = [
+const BUCKETS: { id: Bucket; label: string }[] = [
   { id: "all", label: "הכל" },
   { id: "preparing", label: "בהכנה במשרד" },
   { id: "awaiting", label: "ממתין לחתימת לקוח" },
@@ -33,14 +33,14 @@ type ProcessFilter = "all" | Exclude<ProcessFamily, "other">;
 const PROCESS_FILTERS: { id: ProcessFilter; label: string }[] = [
   { id: "all", label: "כל הסוגים" },
   { id: "bl_6101", label: "בל/6101" },
-  { id: "onboarding", label: "קליטת עובד (101)" },
+  { id: "onboarding", label: "טופס 101" },
   { id: "real_estate", label: "מקרקעין" },
 ];
 
-const QUICK_CASES = [
-  { family: "bl_6101" as const, prefer: "bl_6101", label: "בל/6101 – ביטוח לאומי" },
-  { family: "onboarding" as const, prefer: "employee_onboarding", label: "טופס 101 – קליטת עובד חדש" },
-  { family: "real_estate" as const, prefer: "real_estate", label: "עסקת מקרקעין" },
+const NEW_CASE_KINDS = [
+  { family: "bl_6101" as const, prefer: "bl_6101", label: "בל/6101", detail: "דיווח רב-שנתי לביטוח לאומי" },
+  { family: "onboarding" as const, prefer: "employee_onboarding", label: "טופס 101", detail: "קליטת עובד חדש" },
+  { family: "real_estate" as const, prefer: "real_estate", label: "עסקת מקרקעין", detail: "חוזה מכר ופרטי הנכס" },
 ];
 
 function isDraft(tone: FolderTone) {
@@ -66,12 +66,8 @@ type Card = {
 export function Dashboard() {
   const router = useRouter();
   const [processes, setProcesses] = useState<ProcessRead[]>([]);
-  const [cards, setCards] = useState<Card[]>([]);
-  const [name, setName] = useState("");
-  const [clientName, setClientName] = useState("");
-  const [processKey, setProcessKey] = useState("bl_6101");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [cards, setCards] = useState<Card[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [bucket, setBucket] = useState<Bucket>("all");
   const [actionError, setActionError] = useState<string | null>(null);
@@ -79,10 +75,7 @@ export function Dashboard() {
   const [exporting, setExporting] = useState(false);
   const [processFilter, setProcessFilter] = useState<ProcessFilter>("all");
   const [selected, setSelected] = useState<string[]>([]);
-  const [quickOpen, setQuickOpen] = useState(false);
-  const [quickClient, setQuickClient] = useState("");
-  const [quickBusy, setQuickBusy] = useState(false);
-  const [quickError, setQuickError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,7 +83,6 @@ export function Dashboard() {
       .then(async ([nextProcesses, nextCases]) => {
         if (cancelled) return;
         setProcesses(nextProcesses);
-        setProcessKey((current) => current || nextProcesses.find((item) => item.key === "bl_6101")?.key || nextProcesses[0]?.key || "");
         const loaded = await Promise.all(
           nextCases.map(async (item) => {
             try {
@@ -103,29 +95,15 @@ export function Dashboard() {
         if (!cancelled) setCards(loaded);
       })
       .catch((reason: unknown) => {
-        if (!cancelled) setError(reason instanceof ApiError ? reason.message : "לא ניתן להגיע לארון התיוק.");
+        if (!cancelled) {
+          setLoadError(reason instanceof ApiError ? reason.message : "לא ניתן להגיע לארון התיוק.");
+          setCards([]);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, []);
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const created = await api.createCase({
-        name,
-        process_key: processKey,
-        client_name: clientName || undefined,
-      });
-      router.push(`/cases/${created.id}`);
-    } catch (reason) {
-      setError(reason instanceof ApiError ? reason.message : "לא ניתן לפתוח את התיק.");
-      setBusy(false);
-    }
-  }
 
   async function downloadArchive(card: Card) {
     setActingId(card.item.id);
@@ -194,36 +172,12 @@ export function Dashboard() {
         }
         throw new ApiError(message || "Request failed", response.status);
       }
-      setCards((current) => current.filter((item) => item.item.id !== card.item.id));
+      setCards((current) => (current ?? []).filter((item) => item.item.id !== card.item.id));
       setSelected((current) => current.filter((id) => id !== card.item.id));
     } catch (reason) {
       setActionError(hebrewOfficeError(reason));
     } finally {
       setActingId(null);
-    }
-  }
-
-  async function openQuick(key: string, label: string) {
-    setQuickBusy(true);
-    setQuickError(null);
-    try {
-      const client = quickClient.trim();
-      const created = await api.createCase({
-        name: client || label,
-        process_key: key,
-        client_name: client || undefined,
-      });
-      if (readOfficeSettings().autoLoadForm) {
-        try {
-          await api.loadDefaultForm(created.id);
-        } catch {
-          /* The case is open. The workspace can load the blank form again. */
-        }
-      }
-      router.push(`/cases/${created.id}`);
-    } catch (reason) {
-      setQuickError(reason instanceof ApiError ? reason.message : "לא ניתן לפתוח את התיק.");
-      setQuickBusy(false);
     }
   }
 
@@ -258,7 +212,7 @@ export function Dashboard() {
     }
     if (removed.length) {
       const gone = new Set(removed);
-      setCards((current) => current.filter((card) => !gone.has(card.item.id)));
+      setCards((current) => (current ?? []).filter((card) => !gone.has(card.item.id)));
       setSelected((current) => current.filter((id) => !gone.has(id)));
     }
     setActionError(failure);
@@ -269,8 +223,9 @@ export function Dashboard() {
     setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
   }
 
+  const all = cards ?? [];
   const needle = query.trim().toLowerCase();
-  const visible = cards.filter((card) => {
+  const visible = all.filter((card) => {
     if (bucket !== "all" && bucketOf(card.tone) !== bucket) return false;
     if (processFilter !== "all" && processFamily(card.item.process_key) !== processFilter) return false;
     if (!needle) return true;
@@ -278,194 +233,268 @@ export function Dashboard() {
     return haystack.includes(needle);
   });
   const selectedIds = selected.filter((id) => visible.some((card) => card.item.id === id && isDraft(card.tone)));
+  const countOf = (id: Bucket) => (id === "all" ? all.length : all.filter((card) => bucketOf(card.tone) === id).length);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col px-5 py-8">
+    <main className="mx-auto min-h-screen max-w-6xl px-5 py-6 lg:px-10 lg:py-10">
       <OfficeTopNav />
-      <header className="mt-4 flex flex-wrap items-end justify-between gap-4 border-b-2 border-ink/15 pb-5">
+
+      <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <Wordmark />
-          <div className="mt-3">
-            <OfficeBar />
-          </div>
-          <p className="mt-3 text-sm font-semibold tracking-wide text-tide">ארון תיוק ובקרת מסמכים</p>
-          <h1 className="mt-1 font-serif text-4xl text-ink">תיקיות לקוח</h1>
-          <button
-            type="button"
-            className="mt-3 inline-flex h-10 items-center rounded-md border-2 border-ink/25 bg-white px-3 text-sm font-semibold text-ink"
-            disabled={exporting}
-            onClick={() => void exportCsv()}
-          >
-            {exporting ? "מייצא…" : "ייצוא לאקסל (CSV)"}
-          </button>
+          <h1 className="text-3xl font-bold tracking-tight text-ink">תיקיות לקוח</h1>
+          <p className="mt-1 text-mist">כל תיקי הלקוחות של המשרד, ממה שעוד חסר ועד מה שכבר נחתם.</p>
         </div>
-        <div className="relative">
-          <Button type="button" onClick={() => setQuickOpen((open) => !open)} aria-expanded={quickOpen}>
-            + פתיחת תיק מהיר
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" onClick={() => setCreateOpen(true)}>
+            <Plus aria-hidden className="h-4 w-4" />
+            פתיחת תיק חדש
           </Button>
-          {quickOpen ? (
-            <div className="absolute end-0 z-20 mt-2 w-80 rounded-lg border-2 border-ink/15 bg-white p-4 shadow-card">
-              <p className="text-sm font-semibold text-ink">פתחו תיק וטענו את הטופס הריק</p>
-              <label className="mt-3 block text-sm font-semibold text-ink" htmlFor="quick-client">
-                שם הלקוח
-              </label>
-              <Input id="quick-client" className="mt-2" value={quickClient} onChange={(event) => setQuickClient(event.target.value)} />
-              {quickError ? (
-                <p className="mt-3 text-sm font-medium text-clay" role="alert">
-                  {quickError}
-                </p>
-              ) : null}
-              <div className="mt-3 grid gap-2">
-                {QUICK_CASES.map((item) => {
-                  const match =
-                    processes.find((process) => process.key === item.prefer) ??
-                    processes.find((process) => processFamily(process.key) === item.family);
-                  return (
-                    <Button
-                      key={item.family}
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      disabled={!match || quickBusy}
-                      onClick={() => void openQuick(match?.key ?? "", item.label)}
-                    >
-                      {quickBusy ? "פותח…" : item.label}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
+          <Button type="button" variant="outline" disabled={exporting} onClick={() => void exportCsv()}>
+            <Download aria-hidden className="h-4 w-4" />
+            {exporting ? "מייצא…" : "ייצוא לאקסל"}
+          </Button>
         </div>
       </header>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
-        <form onSubmit={onSubmit} className="h-fit rounded-lg border-2 border-ink/15 bg-white p-5 shadow-card transition duration-200 hover:-translate-y-0.5">
-          <h2 className="font-serif text-3xl">תיק חדש</h2>
-          <label className="mt-5 block text-sm font-semibold text-ink" htmlFor="case-name">
-            שם התיק
-          </label>
-          <Input id="case-name" className="mt-2" value={name} onChange={(event) => setName(event.target.value)} required />
-          <label className="mt-4 block text-sm font-semibold text-ink" htmlFor="client-name">
-            שם הלקוח
-          </label>
-          <Input id="client-name" className="mt-2" value={clientName} onChange={(event) => setClientName(event.target.value)} />
-          <label className="mt-4 block text-sm font-semibold text-ink" htmlFor="process">
-            תהליך
-          </label>
-          <select
-            id="process"
-            className="mt-2 h-11 w-full rounded-md border-2 border-ink/25 bg-white px-3 text-base focus:border-tide focus:outline-none focus:ring-2 focus:ring-tide"
-            value={processKey}
-            onChange={(event) => setProcessKey(event.target.value)}
-          >
-            {processes.map((process) => (
-              <option key={process.key} value={process.key}>
-                {processLabel(process.key, process.name)}
-              </option>
-            ))}
-          </select>
-          {error ? (
-            <p className="mt-3 text-sm font-medium text-clay" role="alert">
-              {error}
-            </p>
-          ) : null}
-          <Button className="mt-5 w-full" type="submit" disabled={busy || !processKey}>
-            {busy ? "פותח…" : "פתיחת תיק"}
-          </Button>
-        </form>
-
-        <section>
-          <h2 className="font-serif text-2xl">הארון</h2>
-          {actionError ? (
-            <p className="mt-3 text-sm font-medium text-clay" role="alert">
-              {actionError}
-            </p>
-          ) : null}
-          <div className="mt-4 space-y-3">
+      <section className="mt-8 overflow-hidden rounded-lg border border-line bg-white shadow-card" aria-label="רשימת התיקים">
+        <div className="border-b border-line p-4">
+          <div className="relative">
+            <Search aria-hidden className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mist" />
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="חיפוש לפי שם לקוח או מספרתיק..."
-              aria-label="חיפוש לפי שם לקוח או מספרתיק..."
+              placeholder="חיפוש לפי שם לקוח או מספר תיק"
+              aria-label="חיפוש לפי שם לקוח או מספר תיק"
+              className="h-10 ps-9 shadow-none"
             />
-            <div className="flex flex-wrap gap-2" role="tablist" aria-label="סינון לפי מצב">
-              {FILTERS.map((item) => {
-                const count = item.id === "all" ? cards.length : cards.filter((card) => bucketOf(card.tone) === item.id).length;
-                const selected = bucket === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={selected}
-                    className={`min-h-11 rounded-md border-2 px-3 text-sm font-semibold ${selected ? "border-tide bg-tide text-white" : "border-ink/15 bg-white text-ink"}`}
-                    onClick={() => setBucket(item.id)}
-                  >
-                    {item.label} ({count})
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex flex-wrap gap-2" role="tablist" aria-label="סינון לפי סוג תהליך">
-              {PROCESS_FILTERS.map((item) => {
-                const count = item.id === "all" ? cards.length : cards.filter((card) => processFamily(card.item.process_key) === item.id).length;
-                const selectedFilter = processFilter === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={selectedFilter}
-                    className={`min-h-11 rounded-md border-2 px-3 text-sm font-semibold ${selectedFilter ? "border-tide bg-tide text-white" : "border-ink/15 bg-white text-ink"}`}
-                    onClick={() => setProcessFilter(item.id)}
-                  >
-                    {item.label} ({count})
-                  </button>
-                );
-              })}
-            </div>
-            {selectedIds.length > 0 ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border-2 border-clay/40 bg-[#f8ece8] px-3 py-2">
-                <p className="text-sm font-semibold text-ink">נבחרו {selectedIds.length} תיקי טיוטה</p>
-                <button
-                  type="button"
-                  className="inline-flex h-10 items-center rounded-md border-2 border-clay px-3 text-sm font-semibold text-clay"
-                  disabled={actingId === "bulk"}
-                  onClick={() => void deleteSelected(selectedIds)}
-                >
-                  {actingId === "bulk" ? "מוחק…" : "מחק טיוטות שנבחרו"}
-                </button>
-              </div>
-            ) : null}
           </div>
-          <div className="mt-4 grid gap-4">
-            {cards.length === 0 ? (
-              <p className="rounded-lg border-2 border-dashed border-ink/20 bg-white p-5 text-sm text-ink">אין עדיין תיקיות.</p>
-            ) : visible.length === 0 ? (
-              <p className="rounded-lg border-2 border-dashed border-ink/20 bg-white p-5 text-sm text-ink">אין תיקיות בתצוגה הזו.</p>
-            ) : (
-              visible.map((card) => (
-                <FolderCard
-                  key={card.item.id}
-                  card={card}
-                  busy={actingId === card.item.id}
-                  onDownload={() => void downloadArchive(card)}
-                  onDelete={isDraft(card.tone) ? () => void deleteDraft(card) : undefined}
-                  remind={card.tone === "awaiting"}
-                  selected={selected.includes(card.item.id)}
-                  onToggle={isDraft(card.tone) ? () => toggleSelected(card.item.id) : undefined}
-                />
-              ))
-            )}
+        </div>
+        <div className="space-y-2 border-b border-line bg-[#fbfbf9] px-4 py-3">
+          <Segmented
+            label="סינון לפי מצב התיק"
+            items={BUCKETS.map((item) => ({ id: item.id, label: item.label, count: cards ? countOf(item.id) : null }))}
+            value={bucket}
+            onChange={setBucket}
+          />
+          <Segmented label="סינון לפי סוג תהליך" items={PROCESS_FILTERS} value={processFilter} onChange={setProcessFilter} />
+        </div>
+
+        {selectedIds.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-[#fbf1ee] px-4 py-2.5">
+            <p className="text-sm font-semibold text-ink">נבחרו {selectedIds.length} תיקי טיוטה</p>
+            <Button type="button" size="sm" variant="danger" disabled={actingId === "bulk"} onClick={() => void deleteSelected(selectedIds)}>
+              <Trash2 aria-hidden className="h-3.5 w-3.5" />
+              {actingId === "bulk" ? "מוחק…" : "מחיקת הטיוטות שנבחרו"}
+            </Button>
           </div>
-        </section>
-      </div>
+        ) : null}
+
+        {actionError || loadError ? (
+          <p className="border-b border-line bg-[#fbf1ee] px-4 py-3 text-sm font-medium text-clay" role="alert">
+            {actionError ?? loadError}
+          </p>
+        ) : null}
+
+        {cards === null ? (
+          <ListSkeleton />
+        ) : all.length === 0 ? (
+          <EmptyState
+            title="הארון עדיין ריק"
+            body="פתחו את התיק הראשון: בחרו לקוח ותהליך, והמערכת תבקש ממנו את המסמכים ותמלא את הטופס."
+            action={
+              <Button type="button" onClick={() => setCreateOpen(true)}>
+                <Plus aria-hidden className="h-4 w-4" />
+                פתיחת תיק ראשון
+              </Button>
+            }
+          />
+        ) : visible.length === 0 ? (
+          <EmptyState title="אין תיקים שמתאימים לסינון" body="נסו חיפוש אחר, או הציגו את כל התיקים." />
+        ) : (
+          <ul className="divide-y divide-line">
+            {visible.map((card) => (
+              <CaseRow
+                key={card.item.id}
+                card={card}
+                busy={actingId === card.item.id}
+                onDownload={() => void downloadArchive(card)}
+                onDelete={isDraft(card.tone) ? () => void deleteDraft(card) : undefined}
+                remind={card.tone === "awaiting"}
+                selected={selected.includes(card.item.id)}
+                onToggle={isDraft(card.tone) ? () => toggleSelected(card.item.id) : undefined}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <NewCaseDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        processes={processes}
+        onCreated={(id) => router.push(`/cases/${id}`)}
+      />
     </main>
   );
 }
 
-function FolderCard({
+function NewCaseDialog({
+  open,
+  onOpenChange,
+  processes,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  processes: ProcessRead[];
+  onCreated: (id: string) => void;
+}) {
+  const [clientName, setClientName] = useState("");
+  const [caseName, setCaseName] = useState("");
+  const [family, setFamily] = useState<(typeof NEW_CASE_KINDS)[number]["family"]>("bl_6101");
+  const [loadForm, setLoadForm] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Each time the dialog opens it starts clean, with the office's own default for the blank form.
+  useEffect(() => {
+    if (!open) return;
+    setClientName("");
+    setCaseName("");
+    setError(null);
+    setBusy(false);
+    setLoadForm(readOfficeSettings().autoLoadForm);
+  }, [open]);
+
+  const kinds = NEW_CASE_KINDS.map((kind) => ({
+    ...kind,
+    process:
+      processes.find((process) => process.key === kind.prefer) ??
+      processes.find((process) => processFamily(process.key) === kind.family),
+  }));
+  const chosen = kinds.find((kind) => kind.family === family);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!chosen?.process) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const client = clientName.trim();
+      const created = await api.createCase({
+        name: caseName.trim() || client || chosen.label,
+        process_key: chosen.process.key,
+        client_name: client || undefined,
+      });
+      if (loadForm) {
+        try {
+          await api.loadDefaultForm(created.id);
+        } catch {
+          /* The case is open. The workspace can load the blank form again. */
+        }
+      }
+      onCreated(created.id);
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "לא ניתן לפתוח את התיק.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[min(92vw,34rem)]">
+        <DialogTitle>תיק חדש</DialogTitle>
+        <p className="mt-1 text-sm text-mist">בחרו לקוח ותהליך. את המסמכים והפרטים משלימים בתוך התיק.</p>
+        <form onSubmit={submit} className="mt-5 space-y-5">
+          <div>
+            <label className="block text-sm font-semibold text-ink" htmlFor="new-client">
+              שם הלקוח
+            </label>
+            <Input
+              id="new-client"
+              className="mt-1.5"
+              value={clientName}
+              onChange={(event) => setClientName(event.target.value)}
+              placeholder="לדוגמה: דנה כהן"
+              autoFocus
+            />
+          </div>
+
+          <fieldset>
+            <legend className="text-sm font-semibold text-ink">תהליך</legend>
+            <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+              {kinds.map((kind) => {
+                const active = kind.family === family;
+                return (
+                  <label
+                    key={kind.family}
+                    className={`cursor-pointer rounded-md border p-3 transition-colors ${
+                      kind.process ? "" : "pointer-events-none opacity-50"
+                    } ${active ? "border-tide bg-mint ring-1 ring-tide" : "border-line hover:border-ink/25"}`}
+                  >
+                    <input
+                      type="radio"
+                      name="new-case-kind"
+                      className="sr-only"
+                      checked={active}
+                      disabled={!kind.process}
+                      onChange={() => setFamily(kind.family)}
+                    />
+                    <span className="block text-sm font-semibold text-ink">{kind.label}</span>
+                    <span className="mt-0.5 block text-xs text-mist">{kind.detail}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+
+          <div>
+            <label className="block text-sm font-semibold text-ink" htmlFor="new-case-name">
+              שם התיק <span className="font-normal text-mist">(לא חובה)</span>
+            </label>
+            <Input
+              id="new-case-name"
+              className="mt-1.5"
+              value={caseName}
+              onChange={(event) => setCaseName(event.target.value)}
+              placeholder={clientName.trim() || chosen?.label || ""}
+            />
+          </div>
+
+          <label className="flex items-start gap-3 rounded-md bg-paper p-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-[#0e4f49]"
+              checked={loadForm}
+              onChange={(event) => setLoadForm(event.target.checked)}
+            />
+            <span>
+              <span className="block font-semibold text-ink">לטעון את הטופס הריק לתיק</span>
+              <span className="block text-mist">הטופס הרשמי של התהליך ייטען מיד, מוכן למילוי.</span>
+            </span>
+          </label>
+
+          {error ? (
+            <p className="text-sm font-medium text-clay" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+              ביטול
+            </Button>
+            <Button type="submit" disabled={busy || !chosen?.process}>
+              {busy ? "פותח…" : "פתיחת התיק"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CaseRow({
   card,
   busy,
   onDownload,
@@ -482,90 +511,207 @@ function FolderCard({
   selected?: boolean;
   onToggle?: () => void;
 }) {
-  const docPct = card.docsTotal ? Math.round((card.docsDone / card.docsTotal) * 100) : 0;
-  const fieldPct = card.fieldsTotal ? Math.round((card.fieldsDone / card.fieldsTotal) * 100) : 0;
+  const title = card.item.client_name || card.item.name;
   const whole = card.docsTotal + card.fieldsTotal;
   const readiness = whole ? Math.round(((card.docsDone + card.fieldsDone) / whole) * 100) : 0;
   return (
-    <article className="overflow-hidden rounded-lg border-2 border-ink/15 bg-white shadow-card transition duration-200 hover:-translate-y-0.5 hover:border-tide hover:shadow-lg">
-    <a
-      href={`/cases/${card.item.id}`}
-      className="block p-5"
+    <li
+      className={`group grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-4 gap-y-3 px-4 py-4 transition-colors hover:bg-[#fbfbf9] md:grid-cols-[1.25rem_minmax(0,1fr)_11rem_10rem_11rem] ${
+        selected ? "bg-[#fbf1ee]" : ""
+      }`}
     >
-      <span className="flex flex-wrap items-start justify-between gap-3">
-        <span>
-          <span className="block font-serif text-2xl text-ink">{card.item.client_name || card.item.name}</span>
-          <span className="mt-1 block text-sm text-ink">
+      <span className="flex justify-center">
+        {onToggle ? (
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-[#0e4f49]"
+            checked={selected}
+            onChange={onToggle}
+            aria-label={`בחירת תיק הטיוטה של ${title}`}
+          />
+        ) : null}
+      </span>
+
+      <a href={`/cases/${card.item.id}`} className="flex min-w-0 items-center gap-3 rounded-md">
+        <span
+          aria-hidden
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-mint text-sm font-bold text-tide"
+        >
+          {initials(title)}
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate font-semibold text-ink group-hover:text-tide">{title}</span>
+          <span className="mt-0.5 block truncate text-sm text-mist">
             {processLabel(card.item.process_key, card.item.process_name)} · {formatWhen(card.item.updated_at)}
           </span>
         </span>
+      </a>
+
+      <div className="col-start-2 md:col-start-auto" title={`מסמכים ${card.docsDone}/${card.docsTotal} · פרטים ${card.fieldsDone}/${card.fieldsTotal}`}>
+        <div className="flex items-center justify-between text-xs text-mist">
+          <span>מוכנות</span>
+          <span className="font-semibold tabular-nums text-ink">{readiness}%</span>
+        </div>
+        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-ink/10">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${readiness === 100 ? "bg-moss" : "bg-tide"}`}
+            style={{ width: `${readiness}%` }}
+          />
+        </div>
+        <div className="mt-1 flex gap-3 text-[11px] text-mist">
+          <span>מסמכים {card.docsDone}/{card.docsTotal}</span>
+          <span>פרטים {card.fieldsDone}/{card.fieldsTotal}</span>
+        </div>
+      </div>
+
+      <div className="col-start-2 md:col-start-auto">
         <StatusPill tone={card.tone} />
-      </span>
-      <span className="mt-4 block">
-        <span className="mb-1 flex justify-between text-xs font-semibold text-ink">
-          <span>מוכנות התיק</span>
-          <span>{readiness}%</span>
-        </span>
-        <span className="block h-2.5 overflow-hidden rounded-full bg-ink/10">
-          <span className="block h-full rounded-full bg-tide" style={{ width: `${readiness}%` }} />
-        </span>
-        <span className="mt-2 grid gap-3 sm:grid-cols-2">
-          <Meter label="מסמכים" done={card.docsDone} total={card.docsTotal} pct={docPct} />
-          <Meter label="פרטים אישיים" done={card.fieldsDone} total={card.fieldsTotal} pct={fieldPct} />
-        </span>
-      </span>
-    </a>
-    <div className="flex flex-wrap items-center gap-2 border-t-2 border-ink/10 px-5 py-3">
-      {onToggle ? (
-        <label className="inline-flex h-10 items-center gap-2 text-sm font-semibold text-ink">
-          <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`בחירת תיק הטיוטה של ${card.item.client_name || card.item.name}`} />
-          בחירה
-        </label>
-      ) : null}
-      <button
-        type="button"
-        className="inline-flex h-10 items-center rounded-md border-2 border-ink/25 bg-white px-3 text-sm font-semibold text-ink"
-        disabled={busy}
-        onClick={onDownload}
-      >
-        הורד ZIP
-      </button>
-      {remind ? (
-        <WhatsAppReminder
-          clientName={card.item.client_name || card.item.name}
-          phone={card.phone}
-          formTitle={dispatchFormTitle(card.item.process_key)}
-        />
-      ) : null}
-      {onDelete ? (
-        <button
-          type="button"
-          className="inline-flex h-10 items-center rounded-md border-2 border-clay px-3 text-sm font-semibold text-clay"
-          disabled={busy}
-          onClick={onDelete}
+      </div>
+
+      <div className="col-start-2 flex items-center gap-1 md:col-start-auto md:justify-end">
+        {remind ? (
+          <WhatsAppReminder
+            className="h-8 px-2.5 text-xs"
+            clientName={title}
+            phone={card.phone}
+            formTitle={dispatchFormTitle(card.item.process_key)}
+          />
+        ) : null}
+        <IconButton label={`הורדת התיק של ${title} כקובץ ZIP`} disabled={busy} onClick={onDownload}>
+          <Download className="h-4 w-4" />
+        </IconButton>
+        <a
+          href={`/cases/${card.item.id}`}
+          aria-label={`פתיחת התיק של ${title}`}
+          title="פתיחת התיק"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-mist transition-colors hover:bg-ink/5 hover:text-ink"
         >
-          מחק תיק טיוטה
-        </button>
-      ) : null}
-    </div>
-    </article>
+          <PenLine aria-hidden className="h-4 w-4" />
+        </a>
+        {onDelete ? (
+          <IconButton label={`מחיקת תיק הטיוטה של ${title}`} disabled={busy} onClick={onDelete} danger>
+            <Trash2 className="h-4 w-4" />
+          </IconButton>
+        ) : null}
+      </div>
+    </li>
   );
 }
 
-function Meter({ label, done, total, pct }: { label: string; done: number; total: number; pct: number }) {
+/**
+ * A compact segmented control: one choice at a time, with an optional count on each segment.
+ * It is only as wide as its segments; on a narrow screen it scrolls sideways instead of wrapping.
+ */
+function Segmented<T extends string>({
+  label,
+  items,
+  value,
+  onChange,
+}: {
+  label: string;
+  items: { id: T; label: string; count?: number | null }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
   return (
-    <span className="block">
-      <span className="mb-1 flex justify-between text-xs font-semibold text-ink">
-        <span>{label}</span>
-        <span>
-          {done}/{total}
-        </span>
-      </span>
-      <span className="block h-2.5 overflow-hidden rounded-full bg-ink/10">
-        <span className="block h-full rounded-full bg-tide transition-all duration-500" style={{ width: `${pct}%` }} />
-      </span>
-    </span>
+    <div
+      className="no-scrollbar flex w-full min-w-0 gap-1.5 overflow-x-auto whitespace-nowrap rounded-lg border border-line bg-paper p-0.5"
+      role="tablist"
+      aria-label={label}
+    >
+      {items.map((item) => {
+        const active = value === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(item.id)}
+            className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 text-sm transition-colors ${
+              active ? "bg-white font-semibold text-ink shadow-sm ring-1 ring-line" : "font-medium text-mist hover:text-ink"
+            }`}
+          >
+            {item.label}
+            {item.count !== undefined && item.count !== null ? (
+              <span
+                className={`min-w-5 rounded-full px-1.5 text-center text-xs tabular-nums ${
+                  active ? "bg-mint text-tide" : "bg-ink/5 text-mist"
+                }`}
+              >
+                {item.count}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
   );
+}
+
+function IconButton({
+  label,
+  disabled,
+  onClick,
+  danger = false,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex h-8 w-8 items-center justify-center rounded-md text-mist transition-colors disabled:opacity-40 ${
+        danger ? "hover:bg-[#fbf1ee] hover:text-clay" : "hover:bg-ink/5 hover:text-ink"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function EmptyState({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center px-6 py-16 text-center">
+      <span aria-hidden className="flex h-12 w-12 items-center justify-center rounded-full bg-mint text-tide">
+        <FolderOpen className="h-6 w-6" />
+      </span>
+      <p className="mt-4 font-semibold text-ink">{title}</p>
+      <p className="mt-1 max-w-sm text-sm text-mist">{body}</p>
+      {action ? <div className="mt-5">{action}</div> : null}
+    </div>
+  );
+}
+
+function ListSkeleton() {
+  return (
+    <ul className="divide-y divide-line" aria-busy="true" aria-label="טוען תיקים">
+      {[0, 1, 2].map((row) => (
+        <li key={row} className="flex items-center gap-4 px-4 py-5">
+          <span className="w-5" />
+          <span className="h-10 w-10 animate-pulse rounded-full bg-ink/5" />
+          <span className="flex-1 space-y-2">
+            <span className="block h-3.5 w-40 animate-pulse rounded bg-ink/5" />
+            <span className="block h-3 w-64 animate-pulse rounded bg-ink/5" />
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function initials(name: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "?";
+  return words.length === 1 ? words[0].charAt(0) : `${words[0].charAt(0)}${words[words.length - 1].charAt(0)}`;
 }
 
 function toCard(item: CaseRead, workspace: CaseWorkspace | null): Card {
