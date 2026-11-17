@@ -37,5 +37,7 @@ class AuditAction(str, Enum):
     ARCHIVE_EXPORTED = "archive_exported"
     CASE_REOPENED = "case_reopened"
     DEFAULT_FORM_LOADED = "default_form_loaded"
+    SMART_UPLOAD_COMPLETED = "smart_upload_completed"
+    CLIENT_VAULT_REUSED = "client_vault_reused"
     INTERNAL_NOTE_ADDED = "internal_note_added"
     CLIENT_DOCUMENT_UPLOADED = "client_document_uploaded"

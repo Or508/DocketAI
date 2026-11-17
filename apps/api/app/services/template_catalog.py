@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 _documents = TypeAdapter(list[DocumentTypeSpec])
 _fields = TypeAdapter(list[FieldSpec])
 
-_ORDER = {"bl_6101": 0, "onboarding": 1, "employee_onboarding": 2}
+_ORDER = {"bl_6101": 0, "onboarding": 1, "real_estate": 2, "employee_onboarding": 3}
 _TEXT_HE: dict[str, tuple[str, str]] = {
     "bl_6101": (
         "בל/6101 – דיווח רב-שנתי לביטוח לאומי",
@@ -47,7 +47,7 @@ _TEXT_HE: dict[str, tuple[str, str]] = {
     ),
     "real_estate": (
         "עסקת מקרקעין",
-        "תיק רכישה: הסכם מכר, נסח טאבו, זיהוי הצדדים ואישורי מס.",
+        "תיק רכישה: הסכם מכר, נסח טאבו, זיהוי הצדדים ואישורי מס. הפרטים מתמלאים על טופס העסקה, והרוכש חותם על הטופס עצמו.",
     ),
 }
 # The everyday name of the document a drawer holds, as shown beside a field it fills.

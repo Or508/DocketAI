@@ -38,6 +38,7 @@ const PROCESS_FILTERS: { id: ProcessFilter; label: string }[] = [
 const QUICK_CASES = [
   { family: "bl_6101" as const, prefer: "bl_6101", label: "בל/6101 – ביטוח לאומי" },
   { family: "onboarding" as const, prefer: "employee_onboarding", label: "טופס 101 – קליטת עובד חדש" },
+  { family: "real_estate" as const, prefer: "real_estate", label: "עסקת מקרקעין" },
 ];
 
 function isDraft(tone: FolderTone) {
@@ -288,6 +289,9 @@ export function Dashboard() {
             <a className="text-tide underline" href="/templates">
               קטלוג טפסים (/templates)
             </a>
+            <a className="inline-flex h-10 items-center rounded-md bg-tide px-3 text-white" href="/clients">
+              ספר לקוחות וכספת (/clients)
+            </a>
             <a className="text-tide underline" href="/verify">
               אימות חותם ציבורי (/verify)
             </a>
@@ -489,6 +493,8 @@ function FolderCard({
 }) {
   const docPct = card.docsTotal ? Math.round((card.docsDone / card.docsTotal) * 100) : 0;
   const fieldPct = card.fieldsTotal ? Math.round((card.fieldsDone / card.fieldsTotal) * 100) : 0;
+  const whole = card.docsTotal + card.fieldsTotal;
+  const readiness = whole ? Math.round(((card.docsDone + card.fieldsDone) / whole) * 100) : 0;
   return (
     <article className="overflow-hidden rounded-lg border-2 border-ink/15 bg-white shadow-card transition duration-200 hover:-translate-y-0.5 hover:border-tide hover:shadow-lg">
     <a
@@ -504,9 +510,18 @@ function FolderCard({
         </span>
         <StatusPill tone={card.tone} />
       </span>
-      <span className="mt-4 grid gap-3 sm:grid-cols-2">
-        <Meter label="מסמכים" done={card.docsDone} total={card.docsTotal} pct={docPct} />
-        <Meter label="פרטים אישיים" done={card.fieldsDone} total={card.fieldsTotal} pct={fieldPct} />
+      <span className="mt-4 block">
+        <span className="mb-1 flex justify-between text-xs font-semibold text-ink">
+          <span>מוכנות התיק</span>
+          <span>{readiness}%</span>
+        </span>
+        <span className="block h-2.5 overflow-hidden rounded-full bg-ink/10">
+          <span className="block h-full rounded-full bg-tide" style={{ width: `${readiness}%` }} />
+        </span>
+        <span className="mt-2 grid gap-3 sm:grid-cols-2">
+          <Meter label="מסמכים" done={card.docsDone} total={card.docsTotal} pct={docPct} />
+          <Meter label="פרטים אישיים" done={card.fieldsDone} total={card.fieldsTotal} pct={fieldPct} />
+        </span>
       </span>
     </a>
     <div className="flex flex-wrap items-center gap-2 border-t-2 border-ink/10 px-5 py-3">

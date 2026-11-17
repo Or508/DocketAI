@@ -11,7 +11,7 @@ import { ApiError } from "@/lib/api";
 import { PHONE_BOXES_NOTE } from "@/lib/hebrew";
 
 const GROUPS = [
-  { title: "שם וזהות", keys: ["last_name", "first_name", "full_name", "national_id"] },
+  { title: "שם וזהות", keys: ["last_name", "first_name", "full_name", "national_id", "id_number"] },
   { title: "יישוב / עיר, רחוב ומס' בית", keys: ["city", "street", "house_number", "address_he"] },
   { title: "טלפון נייד", keys: ["phone", "email"] },
   { title: "בנק / סניף / חשבון", keys: ["bank_name", "bank_branch", "bank_account"] },
@@ -24,6 +24,8 @@ export function FieldVerification({
   field_sources,
   busy,
   onSave,
+  sourceFor,
+  onViewSource,
 }: {
   processKey: string;
   process: Pick<ProcessRead, "required_fields">;
@@ -31,6 +33,8 @@ export function FieldVerification({
   field_sources: Record<string, FieldSource>;
   busy: boolean;
   onSave: (key: string, value: string) => Promise<void>;
+  sourceFor?: (fieldKey: string) => { id: string; name: string } | null;
+  onViewSource?: (file: { id: string; name: string }) => void;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -67,7 +71,7 @@ export function FieldVerification({
   function change(field: FieldSpec, value: string) {
     let next = value;
     if (isNumericSlot(field)) next = field.field_type === "phone" ? phoneDraft(processKey, value) : normalizeNumeric(value);
-    if (field.field_type === "id_number") next = next.slice(0, 9);
+    if (isIsraeliId(field)) next = next.slice(0, 9);
     if (field.field_type === "email") next = formatEmail(value);
     setDrafts((current) => ({ ...current, [field.key]: next }));
   }
@@ -148,6 +152,8 @@ export function FieldVerification({
                   error={errors[field.key] ?? ""}
                   note={field.key === "phone" && processKey === "bl_6101" ? PHONE_BOXES_NOTE : ""}
                   busy={busy}
+                  source={sourceFor?.(field.key) ?? null}
+                  onViewSource={onViewSource}
                   onChange={(value) => change(field, value)}
                   onBlur={() => void commit(field)}
                 />
@@ -167,6 +173,8 @@ export function FieldVerification({
                 error={errors[field.key] ?? ""}
                 note={field.key === "phone" && processKey === "bl_6101" ? PHONE_BOXES_NOTE : ""}
                 busy={busy}
+                source={sourceFor?.(field.key) ?? null}
+                onViewSource={onViewSource}
                 onChange={(value) => change(field, value)}
                 onBlur={() => void commit(field)}
               />
@@ -185,6 +193,8 @@ function FieldRow({
   error,
   note,
   busy,
+  source,
+  onViewSource,
   onChange,
   onBlur,
 }: {
@@ -194,18 +204,44 @@ function FieldRow({
   error: string;
   note: string;
   busy: boolean;
+  source: { id: string; name: string } | null;
+  onViewSource?: (file: { id: string; name: string }) => void;
   onChange: (value: string) => void;
   onBlur: () => void;
 }) {
-  const idCheck = field.field_type === "id_number" ? israeliIdStatus(value) : null;
-  const hint = error || idMessage(idCheck?.status);
+  const idCheck = isIsraeliId(field) ? israeliIdStatus(value) : null;
+  const phoneCheck = field.field_type === "phone" ? israeliMobileStatus(value) : "empty";
+  const checkLabel = idCheck?.status === "valid" || idCheck?.status === "invalid" ? idMessage(idCheck.status) : phoneLabel(phoneCheck);
+  const checkTone = idCheck?.status === "valid" || phoneCheck === "valid" ? "valid" : "warn";
+  const hint = error || (checkLabel ? "" : idMessage(idCheck?.status));
   const waiting = badge === "ממתין להשלמת משרד";
   return (
     <label className="block text-sm" htmlFor={`field-${field.key}`}>
       <span className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <span className="font-semibold text-ink">{FIELD_LABEL[field.key] ?? field.label_he ?? field.label}</span>
-        <span className={`rounded-full border-2 px-2 py-0.5 text-xs font-bold ${waiting ? "border-amberink bg-[#f6e4c4] text-[#4a3208]" : "border-moss bg-[#e7f5ee] text-[#0d4a2e]"}`}>
-          {badge}
+        <span className="flex flex-wrap items-center gap-2">
+          {source && onViewSource ? (
+            <button
+              type="button"
+              className="inline-flex h-8 items-center rounded-md border-2 border-ink/20 bg-white px-2 text-xs font-semibold text-ink"
+              onClick={(event) => {
+                event.preventDefault();
+                onViewSource(source);
+              }}
+            >
+              צפה במקור 👁
+            </button>
+          ) : null}
+          {checkLabel ? (
+            <span
+              className={`rounded-full border-2 px-2 py-0.5 text-xs font-bold ${checkTone === "valid" ? "border-moss bg-[#e7f5ee] text-[#0d4a2e]" : "border-amberink bg-[#f6e4c4] text-[#4a3208]"}`}
+            >
+              {checkLabel}
+            </span>
+          ) : null}
+          <span className={`rounded-full border-2 px-2 py-0.5 text-xs font-bold ${waiting ? "border-amberink bg-[#f6e4c4] text-[#4a3208]" : "border-moss bg-[#e7f5ee] text-[#0d4a2e]"}`}>
+            {badge}
+          </span>
         </span>
       </span>
       <Input
@@ -213,7 +249,7 @@ function FieldRow({
         value={value}
         disabled={busy}
         dir={field.rtl ? "rtl" : "ltr"}
-        inputMode={field.field_type === "phone" || field.field_type === "id_number" ? "numeric" : undefined}
+        inputMode={field.field_type === "phone" || isIsraeliId(field) ? "numeric" : undefined}
         aria-invalid={Boolean(error) || idCheck?.status === "invalid"}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
@@ -225,14 +261,30 @@ function FieldRow({
 }
 
 function idMessage(status: string | undefined) {
-  if (status === "valid") return "ספרת הביקורת תקינה.";
+  if (status === "valid") return "ספרת ביקורת תקינה ✓";
   if (status === "incomplete") return "חסרות ספרות במספר הזהות.";
-  if (status === "invalid") return "מספר הזהות אינו תקין.";
+  if (status === "invalid") return "ספרת ביקורת שגויה ⚠";
   return "";
 }
 
+function israeliMobileStatus(raw: string): "empty" | "valid" | "invalid" {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "empty";
+  return /^05\d{8}$/.test(digits) ? "valid" : "invalid";
+}
+
+function phoneLabel(status: "empty" | "valid" | "invalid") {
+  if (status === "valid") return "נייד 05X תקין ✓";
+  if (status === "invalid") return "פורמט נייד שגוי ⚠";
+  return "";
+}
+
+function isIsraeliId(field: FieldSpec) {
+  return field.field_type === "id_number" || field.key === "national_id" || field.key === "id_number";
+}
+
 function isNumericSlot(field: FieldSpec) {
-  return field.field_type === "phone" || field.field_type === "id_number" || field.key === "bank_branch" || field.key === "bank_account";
+  return field.field_type === "phone" || isIsraeliId(field) || field.key === "bank_branch" || field.key === "bank_account";
 }
 
 function normalizeNumeric(raw: string) {
@@ -241,14 +293,14 @@ function normalizeNumeric(raw: string) {
 
 function displayValue(processKey: string, field: FieldSpec, raw: string) {
   if (field.field_type === "phone") return phoneDraft(processKey, raw);
-  if (field.field_type === "id_number") return normalizeNumeric(raw).slice(0, 9);
+  if (isIsraeliId(field)) return normalizeNumeric(raw).slice(0, 9);
   if (isNumericSlot(field)) return normalizeNumeric(raw);
   return raw;
 }
 
 function payloadFor(processKey: string, field: FieldSpec, raw: string) {
   if (field.field_type === "phone") return phoneDraft(processKey, raw).replace(/\D/g, "");
-  if (isNumericSlot(field)) return field.field_type === "id_number" ? normalizeNumeric(raw).slice(0, 9) : normalizeNumeric(raw);
+  if (isNumericSlot(field)) return isIsraeliId(field) ? normalizeNumeric(raw).slice(0, 9) : normalizeNumeric(raw);
   if (field.field_type === "email") return formatEmail(raw);
   return raw.trim();
 }
@@ -269,7 +321,7 @@ function localProblem(processKey: string, field: FieldSpec, raw: string): string
   const text = raw.trim();
   const label = FIELD_LABEL[field.key] ?? field.label_he ?? field.label;
   if (!text) return "";
-  if (field.field_type === "id_number") {
+  if (isIsraeliId(field)) {
     const check = israeliIdStatus(text);
     return check.status === "valid" ? "" : idMessage(check.status) || "מספר הזהות לא תקין.";
   }

@@ -14,6 +14,7 @@ import { PipelineBanner } from "@/components/pipeline-banner";
 import { ReadingPanel } from "@/components/reading-panel";
 import { SignedChecklist, SignedPdfFrame } from "@/components/signed-review";
 import { SignerLinkCard } from "@/components/signer-link-card";
+import { SmartDropzone } from "@/components/smart-dropzone";
 import { SourceCompare } from "@/components/source-compare";
 import { SigningModal } from "@/components/signing-modal";
 import { StatusPill } from "@/components/status-pill";
@@ -385,6 +386,21 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
       {notice ? <p className="mt-4 text-sm font-medium text-moss">{notice}</p> : null}
       {processing ? <PipelineBanner pipeline={workspace.gap.pipeline} /> : null}
 
+      {workspace.case.status !== "signed" ? (
+        <div className="mt-6">
+          <SmartDropzone
+            caseId={caseId}
+            onUploaded={(next, summary) => {
+              setWorkspace(next);
+              setNotice(summary);
+              setError(null);
+              setWatch(true);
+              void refresh();
+            }}
+          />
+        </div>
+      ) : null}
+
       <div className="mt-6 grid items-start gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(18rem,0.8fr)]">
         <FilingSlots
           workspace={workspace}
@@ -406,6 +422,8 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
           field_values={workspace.field_values}
           field_sources={workspace.field_sources}
           busy={busy}
+          sourceFor={(fieldKey) => sourceDocument(fieldKey, workspace, intake)}
+          onViewSource={setSourceFile}
           onSave={async (key, value) => {
             setBusy(true);
             setError(null);
@@ -626,4 +644,31 @@ function namedDocuments(workspace: CaseWorkspace, intake: IntakeSummary | null):
     }
   }
   return hits;
+}
+
+const FIELD_DRAWER: Record<string, string> = {
+  last_name: "id_copy",
+  first_name: "id_copy",
+  full_name: "id_copy",
+  national_id: "id_copy",
+  id_number: "id_copy",
+  city: "proof_of_address",
+  street: "proof_of_address",
+  house_number: "proof_of_address",
+  address_he: "proof_of_address",
+  phone: "proof_of_address",
+  email: "id_copy",
+  bank_name: "bank_confirmation",
+  bank_branch: "bank_confirmation",
+  bank_account: "bank_confirmation",
+};
+
+function sourceDocument(fieldKey: string, workspace: CaseWorkspace, intake: IntakeSummary | null) {
+  const files = namedDocuments(workspace, intake).filter((item) => !item.busy);
+  const linked = workspace.field_sources[fieldKey]?.document_id;
+  const fromField = linked ? files.find((item) => item.id === linked) : undefined;
+  if (fromField) return { id: fromField.id, name: fromField.filename };
+  const drawer = FIELD_DRAWER[fieldKey];
+  const match = drawer ? files.find((item) => item.type === drawer) : undefined;
+  return match ? { id: match.id, name: match.filename } : null;
 }

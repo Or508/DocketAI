@@ -26,6 +26,8 @@ const LABELS: Record<string, string> = {
   case_reopened: "תיק נפתח מחדש לתיקון",
   archive_exported: "תיק יוצא לארכיון ZIP",
   internal_note_added: "הערה פנימית נוספה לתיק",
+  smart_upload_completed: "העלאה חכמה מרוכזת ומיון אוטומטי למגירות",
+  client_vault_reused: "מסמכי לקוח שוכפלו אוטומטית מכספת הלקוחות",
   signing_link_revoked: "קישור חתימה בוטל",
   signature_invalidated: "החתימה בוטלה",
 };

@@ -10,6 +10,7 @@ from pathlib import Path
 from app.core.config import Settings
 from app.services.fonts import resolve_hebrew_font
 from app.services.form101 import FORM_101_VERSION, build_form_101, build_onboarding_form_101
+from app.services.real_estate_form import REAL_ESTATE_FORM_VERSION, build_real_estate_form
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,14 @@ def default_form(process_key: str, settings: Settings) -> DefaultForm | None:
             title="Form 101",
             missing="Form 101 could not be prepared on this server. Upload the form instead.",
         )
+    if process_key == "real_estate":
+        supplied = settings.resolved_real_estate_template
+        return DefaultForm(
+            path=supplied if supplied.is_file() else _drawn(settings, *_REAL_ESTATE),
+            filename="real_estate_official.pdf",
+            title="real estate",
+            missing="The real estate form could not be prepared on this server. Upload the form instead.",
+        )
     return None
 
 
@@ -59,21 +68,29 @@ _FORM_101 = {
 }
 
 
+_REAL_ESTATE = (f"real-estate-blank-v{REAL_ESTATE_FORM_VERSION}.pdf", build_real_estate_form)
+
+
 def _drawn_form_101(settings: Settings, process_key: str) -> Path:
     stem, build = _FORM_101[process_key]
-    path = settings.resolved_template_dir / f"{stem}-v{FORM_101_VERSION}.pdf"
+    return _drawn(settings, f"{stem}-v{FORM_101_VERSION}.pdf", build)
+
+
+def _drawn(settings: Settings, filename: str, build) -> Path:
+    """The server's own drawing of a blank, made once and kept beside the generated templates."""
+    path = settings.resolved_template_dir / filename
     if path.is_file():
         return path
     font = resolve_hebrew_font(settings.hebrew_font_path)
     if font is None:
-        logger.error("Form 101 needs a Hebrew font and none is available")
+        logger.error("Drawing %s needs a Hebrew font and none is available", filename)
         return path
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         staged = path.with_name(f"{path.name}.{os.getpid()}.tmp")
         staged.write_bytes(build(font))
         os.replace(staged, path)
-        logger.info("Drew blank Form 101 at %s", path)
+        logger.info("Drew blank form at %s", path)
     except Exception:
-        logger.exception("Could not draw the blank Form 101")
+        logger.exception("Could not draw the blank form %s", filename)
     return path

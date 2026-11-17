@@ -110,7 +110,19 @@ def build_onboarding_form_101(font_path: Path) -> bytes:
     return _build(font_path, _ONBOARDING_SECTIONS, "Form 101 new employee card (blank)")
 
 
-def _build(font_path: Path, sections, title_en: str) -> bytes:
+def _build(
+    font_path: Path,
+    sections,
+    title_en: str,
+    *,
+    title: str = FORM_101_TITLE,
+    subtitle: str = FORM_101_SUBTITLE,
+    declaration_title: str = "הצהרת העובד",
+    declaration: tuple[str, ...] | None = None,
+    signature_label: str = SIGNATURE_LABEL,
+    creator: str = f"form101 v{FORM_101_VERSION}",
+) -> bytes:
+    """Draw a two-page flat form: the cells on the first page, the declaration and signature on the second."""
     document = fitz.open()
     try:
         font = fitz.Font(fontfile=str(font_path))
@@ -121,8 +133,8 @@ def _build(font_path: Path, sections, title_en: str) -> bytes:
             page.insert_text((right - width, baseline), shown, fontname="rubik", fontsize=size, color=color)
 
         def heading(page, top: float) -> float:
-            text(page, _RIGHT, top + 18, FORM_101_TITLE, 18, _TIDE)
-            text(page, _RIGHT, top + 36, FORM_101_SUBTITLE, 11)
+            text(page, _RIGHT, top + 18, title, 18, _TIDE)
+            text(page, _RIGHT, top + 36, subtitle, 11)
             page.draw_line((_LEFT, top + 46), (_RIGHT, top + 46), color=_TIDE, width=1.2)
             return top + 64
 
@@ -148,14 +160,14 @@ def _build(font_path: Path, sections, title_en: str) -> bytes:
         second = document.new_page(width=_WIDTH, height=_HEIGHT)
         second.insert_font(fontname="rubik", fontfile=str(font_path))
         top = heading(second, 44.0)
-        text(second, _RIGHT, top + 10, "הצהרת העובד", 10.5, _TIDE)
+        text(second, _RIGHT, top + 10, declaration_title, 10.5, _TIDE)
         top += 34
-        for line in _DECLARATION:
+        for line in declaration or _DECLARATION:
             text(second, _RIGHT, top, line, 10)
             top += 18
         top += 22
         second.draw_rect(fitz.Rect(330, top, _RIGHT, top + 72), color=_RULE, width=0.9)
-        text(second, _RIGHT - 5, top + 10.5, SIGNATURE_LABEL, 8)
+        text(second, _RIGHT - 5, top + 10.5, signature_label, 8)
         second.draw_rect(fitz.Rect(190, top, 320, top + 72), color=_RULE, width=0.7)
         text(second, 315, top + 10.5, "תאריך", 8)
 
@@ -164,7 +176,7 @@ def _build(font_path: Path, sections, title_en: str) -> bytes:
                 "title": title_en,
                 "author": "DocketAI",
                 "producer": "DocketAI",
-                "creator": f"form101 v{FORM_101_VERSION}",
+                "creator": creator,
             }
         )
         _pin_dates(document)

@@ -390,7 +390,12 @@ def test_other_processes_keep_their_own_archive_names(client: TestClient) -> Non
 
 def test_the_catalog_lists_onboarding_as_form_101_ready_to_load(client: TestClient) -> None:
     listed = client.get("/templates").json()
-    assert [item["process_type"] for item in listed][:3] == ["bl_6101", "onboarding", "employee_onboarding"]
+    assert [item["process_type"] for item in listed][:4] == [
+        "bl_6101",
+        "onboarding",
+        "real_estate",
+        "employee_onboarding",
+    ]
     form = next(item for item in listed if item["process_type"] == _KEY)
     assert form["title_he"] == "טופס 101 – קליטת עובד חדש"
     assert form["form_source"] == "official_blank"
@@ -406,6 +411,6 @@ def test_the_catalog_lists_onboarding_as_form_101_ready_to_load(client: TestClie
     assert {(item["target"]["page"], item["target"]["mode"]) for key, item in fields.items() if key != "national_id"} == {
         (1, "text")
     }
-    # A generated-template process is unchanged.
+    # The real estate process starts from its own blank too.
     deal = next(item for item in listed if item["process_type"] == "real_estate")
-    assert deal["form_source"] == "generated"
+    assert deal["form_source"] == "official_blank"

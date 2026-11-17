@@ -277,7 +277,12 @@ PROCESSES: tuple[ProcessSeed, ...] = (
         name="Real estate closing",
         description="Purchase file: contract, land registry extract, identification, and tax clearance.",
         template_filename="real-estate-v1.pdf",
-        layout={"page_index": 0, "signature_rect": signature_rect()},
+        # Signs the transaction form loaded onto the case when there is one, else the generated template.
+        layout={
+            "page_index": 0,
+            "signature_rect": signature_rect(),
+            "signature_labels": ["חתימת הרוכש"],
+        },
         required_documents=[
             {
                 "type_key": "purchase_agreement",

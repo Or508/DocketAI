@@ -17,7 +17,7 @@ from app.schemas.gap import FillAndSignRequest, GapReport, ManualClassifyRequest
 from app.models.user import User
 from app.schemas.notes import NoteCreate, NoteRead
 from app.schemas.timeline import TimelineEvent
-from app.schemas.workspace import CaseWorkspace, UploadResult
+from app.schemas.workspace import CaseWorkspace, SmartUploadResult, UploadResult
 from app.services.case_service import CaseService
 from app.services.chat_stream import iter_chat_stream
 from app.services.progress_events import iter_case_progress
@@ -90,6 +90,16 @@ async def upload_documents(
             background_tasks.add_task(process_case_job, case_id, container)
         result.job_id = job_id
     return result
+
+
+@router.post("/{case_id}/smart-upload", response_model=SmartUploadResult)
+async def smart_upload(
+    case_id: UUID,
+    files: list[UploadFile] = File(...),
+    service: CaseService = Depends(get_case_service),
+) -> SmartUploadResult:
+    """Drop up to ten mixed files; each is filed in the drawer its name and text point to."""
+    return await service.smart_upload(case_id, files)
 
 
 @router.post("/{case_id}/classify-manual", response_model=CaseWorkspace)

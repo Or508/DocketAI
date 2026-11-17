@@ -227,11 +227,11 @@ def test_loading_is_refused_on_a_signed_case_and_on_another_process(client: Test
     assert after["case"]["status"] == "signed"
     assert [item["document_id"] for item in _forms(client, case_id) if item["role"] == "form"] == [form_id]
 
-    # Onboarding now loads Form 101; a process with no blank of its own still refuses.
+    # Every process in the catalog now has a blank of its own: another process loads its own form.
     deal = client.post("/cases", json={"name": "Deal", "process_key": "real_estate"}).json()["id"]
-    wrong = client.post(f"/cases/{deal}/load-default-form")
-    assert wrong.status_code == 409, wrong.text
-    assert client.get(f"/cases/{deal}").json()["case"]["document_count"] == 0
+    other = client.post(f"/cases/{deal}/load-default-form")
+    assert other.status_code == 200, other.text
+    assert other.json()["case"]["document_count"] == 1
 
 
 # Timeline

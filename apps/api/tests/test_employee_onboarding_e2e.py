@@ -232,11 +232,10 @@ def test_an_office_copy_of_form_101_is_used_in_place_of_the_drawn_one(client: Te
 
 
 def test_loading_is_refused_where_there_is_no_form_to_load(client: TestClient, tmp_path: Path) -> None:
-    # A generated-template process signs its own template, so it has nothing to load.
-    hire = client.post("/cases", json={"name": "Deal", "process_key": "real_estate"}).json()["id"]
-    refused = client.post(f"/cases/{hire}/load-default-form")
-    assert refused.status_code == 409, refused.text
-    assert client.get(f"/cases/{hire}").json()["case"]["document_count"] == 0
+    # A process the server has no blank for has nothing to load.
+    from app.services.default_forms import default_form
+
+    assert default_form("no_such_process", get_settings()) is None
 
     # BL/6101 still needs its official blank, and says which setting names it.
     insured = client.post("/cases", json={"name": "BL", "process_key": "bl_6101"}).json()["id"]
@@ -424,7 +423,7 @@ def test_the_catalog_lists_form_101_as_ready_with_its_fields_and_sources(client:
     response = client.get("/templates")
     assert response.status_code == 200, response.text
     listed = response.json()
-    assert [item["process_type"] for item in listed][:3] == ["bl_6101", "onboarding", _KEY]
+    assert [item["process_type"] for item in listed][:4] == ["bl_6101", "onboarding", "real_estate", _KEY]
     form = next(item for item in listed if item["process_type"] == _KEY)
     assert form["title_he"] == _TITLE
     assert form["description_he"]

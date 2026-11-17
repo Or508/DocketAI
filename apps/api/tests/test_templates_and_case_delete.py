@@ -155,11 +155,11 @@ def test_the_catalog_reads_field_targets_from_the_blank_once_it_is_on_the_server
     assert set(targets) == set(_BL_SLOTS)
     assert {(target["page"], target["mode"]) for target in targets.values()} == {(1, "text")}
 
-    # A generated form is always present and is filled as plain text on its one page.
-    generated = _templates(client)["real_estate"]
-    assert generated["form_source"] == "generated"
-    assert generated["default_template_available"] is True
-    assert {(item["target"]["page"], item["target"]["mode"]) for item in generated["mapped_fields"]} == {(1, "text")}
+    # The real estate blank is drawn by the server: always present, plain text cells on its first page.
+    drawn = _templates(client)["real_estate"]
+    assert drawn["form_source"] == "official_blank"
+    assert drawn["default_template_available"] is True
+    assert {(item["target"]["page"], item["target"]["mode"]) for item in drawn["mapped_fields"]} == {(1, "text")}
 
     # Onboarding starts from the Form 101 blank this server draws.
     onboarding = _templates(client)["onboarding"]

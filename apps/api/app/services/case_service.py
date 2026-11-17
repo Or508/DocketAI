@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import io
 import json
 import logging
 import os
@@ -55,6 +56,7 @@ from app.domain.enums import (
 from app.domain.provenance import INTAKE_PROMPT_EN, INTAKE_PROMPT_HE, why_items
 from app.domain.readiness import signing_blockers
 from app.domain.slot_reading import apply_proposals, read_document, retract_document
+from app.domain.smart_routing import route_document
 from app.domain.storage_keys import document_key, signed_keys
 from app.domain.signing_links import as_utc, review_digest
 from app.domain.text_layout import contains_hebrew
@@ -90,7 +92,7 @@ from app.schemas.gap import (
 from app.schemas.process import DocumentTypeSpec, FieldSource, FieldSpec, ProcessRead, ValueSource
 from app.schemas.notes import NoteRead
 from app.schemas.timeline import TimelineEvent
-from app.schemas.workspace import CaseWorkspace, FileRejection, UploadResult
+from app.schemas.workspace import CaseWorkspace, FileRejection, RoutedFile, SmartUploadResult, UploadResult
 from app.services.chat_collector import OPENING, ChatTurn
 from app.services.default_forms import default_form
 from app.services.field_validator import missing_required_fields, validate_field
@@ -1188,6 +1190,228 @@ class CaseService:
         await self._delete_objects(sorted(keys))
         logger.info("Case %s deleted by %s with %d files", case_id, self.scope.actor, documents)
 
+    async def smart_upload(self, case_id: uuid.UUID, files: list[UploadFile]) -> SmartUploadResult:
+        """File a mixed drop of documents: each goes to the drawer its name and text point to.
+
+        A file that is this process's form becomes the case form. A routed file replaces
+        what sat in its drawer. A file nothing points anywhere is kept for the office to file.
+        Everything is read before this returns.
+        """
+        if not files:
+            raise BadRequestError("Choose at least one file.")
+        if len(files) > _SMART_UPLOAD_LIMIT:
+            raise BadRequestError(f"Drop at most {_SMART_UPLOAD_LIMIT} files at a time.")
+        case = await self._get_case(case_id)
+        if case.status == CaseStatus.SIGNED:
+            raise ConflictError("This case is already signed. Reopen it to change its files.")
+        process = case.process_definition
+        layout = process.layout or {}
+        required, optional = _document_specs(process)
+        labels = {spec.type_key: spec.label_he or spec.label for spec in required + optional}
+        fields = _field_specs(process)
+        takes_form = layout.get("sign_source") == "uploaded_form" or _signs_loaded_form(layout)
+        signature_labels = [str(item) for item in layout.get("signature_labels") or []]
+        limit = self.container.settings.max_upload_bytes
+
+        # Decide every file's place before anything is stored.
+        plans: list[tuple[UploadFile, str, str | None, str | None, str | None]] = []
+        with tempfile.TemporaryDirectory() as work:
+            for index, upload in enumerate(files):
+                name = Path(upload.filename or "upload").name
+                data = await upload.read(limit + 1)
+                await upload.seek(0)
+                role: str | None = None
+                document_type: str | None = None
+                matched: str | None = None
+                if len(data) <= limit:
+                    text = ""
+                    if data.startswith(b"%PDF"):
+                        scratch = Path(work) / f"{index}.pdf"
+                        scratch.write_bytes(data)
+                        text, is_form = await asyncio.to_thread(
+                            _inspect_pdf, scratch, fields, layout, signature_labels if takes_form else None
+                        )
+                        if is_form:
+                            role, matched = "form", "form"
+                    if role is None:
+                        route = route_document(name, text, list(labels))
+                        if route is not None:
+                            document_type, matched = route.document_type, route.matched_by
+                plans.append((upload, name, role, document_type, matched))
+
+        groups: dict[tuple[str | None, str | None], list[UploadFile]] = {}
+        for upload, _name, role, document_type, _matched in plans:
+            groups.setdefault((document_type, role), []).append(upload)
+        accepted: set[str] = set()
+        duplicates: set[str] = set()
+        rejected: dict[str, str] = {}
+        for (document_type, role), group in groups.items():
+            routed = document_type is not None or role is not None
+            result, _schedule = await self.add_uploads(
+                case_id, group, document_type=document_type, role=role, replace_existing=routed
+            )
+            accepted.update(result.accepted_filenames)
+            duplicates.update(result.skipped_duplicates)
+            rejected.update({item.filename: item.reason for item in result.rejected})
+        await self.run_ingestion(case_id)
+
+        self.session.expire_all()
+        case = await self._get_case(case_id)
+        newest: dict[str, Document] = {}
+        for document in sorted(case.documents, key=lambda item: (item.created_at, str(item.id))):
+            newest[document.original_filename] = document
+        routed_files: list[RoutedFile] = []
+        for _upload, name, role, document_type, matched in plans:
+            if name in rejected:
+                routed_files.append(RoutedFile(filename=name, outcome="rejected", reason=rejected[name]))
+                continue
+            document = newest.get(name)
+            if document is None:
+                routed_files.append(
+                    RoutedFile(filename=name, outcome="rejected", reason="This file is no longer on the case.")
+                )
+                continue
+            # A form with nothing to fill is kept as evidence; say what the case actually holds.
+            is_form = role == "form" and document.role == "form"
+            filed = is_form or (document_type is not None and document.document_type == document_type)
+            kept_type = document.document_type if document.document_type not in {None, "", "unknown"} else None
+            routed_files.append(
+                RoutedFile(
+                    filename=name,
+                    outcome="routed" if filed else "unrouted",
+                    role=document.role,
+                    document_type=None if is_form else kept_type,
+                    drawer_label_he=None if is_form else labels.get(kept_type or ""),
+                    matched_by=matched if filed else None,  # type: ignore[arg-type]
+                    document_id=document.id,
+                    status=document.status.value,
+                    duplicate=name in duplicates and name not in accepted,
+                    reason=None if filed else "Nothing in this file says which drawer it belongs in.",
+                )
+            )
+        self.session.add(
+            AuditLog(
+                case_id=case.id,
+                action=AuditAction.SMART_UPLOAD_COMPLETED,
+                actor=self.scope.actor,
+                new_value={
+                    "documents": len(plans),
+                    "status": case.status.value,
+                    "routed_files": [
+                        {
+                            "filename": item.filename,
+                            "role": item.role,
+                            "document_type": item.document_type,
+                            "outcome": item.outcome,
+                        }
+                        for item in routed_files
+                    ],
+                },
+            )
+        )
+        await self.session.commit()
+        case = await self._get_case(case_id)
+        return SmartUploadResult(**self._workspace(case).model_dump(), routed_files=routed_files)
+
+    async def quick_case(self, source_case_id: uuid.UUID, process_type: str) -> CaseWorkspace:
+        """Open a new case for the client of an existing case, from what the office already holds.
+
+        The client's ID copy, proof of address and bank letter are copied into the drawers the
+        new process has, its blank form is loaded, the documents are read, and the personal
+        details no document supplies are carried over from the client's earlier cases.
+        """
+        from app.services.clients import PERSONAL_KEYS, group_clients, load_cases
+        from app.services.template_catalog import _TEXT_HE
+
+        source = await self._get_case(source_case_id)
+        key = _PROCESS_ALIASES.get(process_type, process_type)
+        cases = await load_cases(self.session, self.scope)
+        client = next(
+            (item for item in group_clients(cases) if any(case.id == source.id for case in item.cases)),
+            None,
+        )
+        if client is not None:
+            origin = next(case for case in client.cases if case.id == source.id)
+            name = client.name()
+            profile = client.profile()
+            vault = client.vault(first=origin)
+        else:
+            # A case that names nobody is still a source: its own files and values are used.
+            from app.services.clients import Client
+
+            alone = Client(key=f"case:{source.id}", id_number=None, cases=[source])
+            name, profile, vault = source.client_name or source.name, alone.profile(), alone.vault()
+        # Read the bytes now: the copies below are made after this session's objects are refreshed.
+        held: list[tuple[str, str, bytes]] = []
+        for document_type, document in vault.items():
+            try:
+                data = await self.container.store.download_file(document.storage_path)
+            except ObjectMissingError:
+                logger.warning("Vault document %s has no stored file and was not reused", document.id)
+                continue
+            held.append((document_type, document.original_filename, data))
+
+        title = _TEXT_HE.get(key, (key, ""))[0]
+        created = await self.create_case(
+            CaseCreate(name=f"{name} – {title}"[:160], process_key=key, client_name=(name or "")[:160] or None)
+        )
+        case_id = created.id
+        case = await self._get_case(case_id)
+        required, optional = _document_specs(case.process_definition)
+        drawers = {spec.type_key for spec in required + optional}
+        copied: list[str] = []
+        for document_type, filename, data in held:
+            if document_type not in drawers:
+                continue
+            upload = UploadFile(file=io.BytesIO(data), filename=filename)
+            result, _schedule = await self.add_uploads(
+                case_id, [upload], document_type=document_type, replace_existing=True
+            )
+            if result.accepted_filenames:
+                copied.append(document_type)
+        form_loaded = True
+        try:
+            await self.load_default_form(case_id)
+        except (NotFoundError, ConflictError) as exc:
+            # The case is still opened; the office uploads the form from the case itself.
+            logger.info("Quick case %s opened without its blank form: %s", case_id, getattr(exc, "message", exc))
+            form_loaded = False
+        await self.run_ingestion(case_id)
+
+        # What the documents did not supply is carried from the client's earlier cases.
+        self.session.expire_all()
+        case = await self._get_case(case_id)
+        values = {str(k): str(v) for k, v in (case.field_values or {}).items()}
+        carried: list[str] = []
+        for spec in _field_specs(case.process_definition):
+            if values.get(spec.key, "").strip():
+                continue
+            wanted = "full_name" if spec.key == "buyer_name" else spec.key
+            if wanted not in PERSONAL_KEYS or not profile.get(wanted):
+                continue
+            if not validate_field(spec, profile[wanted]).ok:
+                continue
+            await self.set_field(case_id, FieldUpdateRequest(key=spec.key, value=profile[wanted]))
+            carried.append(spec.key)
+
+        self.session.add(
+            AuditLog(
+                case_id=case_id,
+                action=AuditAction.CLIENT_VAULT_REUSED,
+                actor=self.scope.actor,
+                new_value={
+                    "source_case_id": str(source_case_id),
+                    "documents": len(copied),
+                    "document_types": copied,
+                    "fields": carried,
+                    "form_loaded": form_loaded,
+                },
+            )
+        )
+        await self.session.commit()
+        self.session.expire_all()
+        return self._workspace(await self._get_case(case_id))
+
     async def load_default_form(self, case_id: uuid.UUID) -> CaseWorkspace:
         """Put the server's blank form for this process on the case, in place of any form it has."""
         case = await self._get_case(case_id)
@@ -1939,6 +2163,44 @@ def _field_sources(case: Case) -> dict[str, FieldSource]:
         except Exception:
             continue
     return sources
+
+
+_SMART_UPLOAD_LIMIT = 10
+# Names the office uses for a process that the catalog files under another key.
+_PROCESS_ALIASES = {"real_estate_closing": "real_estate"}
+_INSPECT_PAGES = 5
+
+
+def _inspect_pdf(
+    path: Path, fields: list[FieldSpec], layout: dict, signature_labels: list[str] | None
+) -> tuple[str, bool]:
+    """The text of a dropped PDF, and whether it is the form this process fills and signs.
+
+    A form has drawn places for at least half the slots and exactly one signature box.
+    Signature labels are None for a process that takes no form.
+    """
+    from app.services.flat_form import FlatProfile, read_flat_anchors, signature_box
+
+    text = ""
+    try:
+        document = fitz.open(path)
+        try:
+            text = "\n".join(page.get_text() for page in list(document)[:_INSPECT_PAGES])
+        finally:
+            document.close()
+    except Exception:
+        return "", False
+    if not signature_labels or not fields:
+        return text, False
+    try:
+        anchors = read_flat_anchors(path, fields, FlatProfile.from_layout(layout))
+        bound = {str(anchor.get("slot_key")) for anchor in anchors if anchor.get("slot_key")}
+        if len(bound) < max(2, (len(fields) + 1) // 2):
+            return text, False
+        signature_box(path, signature_labels)
+    except Exception:
+        return text, False
+    return text, True
 
 
 def _sign_form(case: Case) -> Document | None:

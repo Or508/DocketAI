@@ -16,6 +16,7 @@ export const PROCESS_LABEL: Record<string, string> = {
   employee_onboarding: "קליטת עובד",
   "Employee onboarding": "קליטת עובד",
   real_estate: "עסקת מקרקעין",
+  real_estate_closing: "עסקת מקרקעין",
   "Real estate closing": "עסקת מקרקעין",
 };
 
@@ -24,7 +25,7 @@ export type ProcessFamily = "bl_6101" | "onboarding" | "real_estate" | "other";
 export function processFamily(key: string): ProcessFamily {
   if (key === "bl_6101" || key === "Insured details declaration") return "bl_6101";
   if (key === "onboarding" || key === "employee_onboarding" || key === "Employee onboarding") return "onboarding";
-  if (key === "real_estate" || key === "Real estate closing") return "real_estate";
+  if (key === "real_estate" || key === "real_estate_closing" || key === "Real estate closing") return "real_estate";
   return "other";
 }
 
@@ -36,6 +37,7 @@ export function blankFormButton(key: string) {
   const family = processFamily(key);
   if (family === "bl_6101") return "טען טופס בל/6101 אוטומטית";
   if (family === "onboarding") return "טען טופס 101 אוטומטית";
+  if (family === "real_estate") return "טען טופס מקרקעין אוטומטית";
   return "טען טופס תבנית אוטומטית";
 }
 
@@ -43,6 +45,7 @@ export function blankFormNotice(key: string) {
   const family = processFamily(key);
   if (family === "bl_6101") return "טופס בל/6101 נטען מהמערכת.";
   if (family === "onboarding") return "טופס 101 נטען מהמערכת.";
+  if (family === "real_estate") return "טופס המקרקעין נטען מהמערכת.";
   return "טופס התבנית נטען מהמערכת.";
 }
 
@@ -78,6 +81,7 @@ export const FIELD_LABEL: Record<string, string> = {
   first_name: "שם פרטי",
   full_name: "שם מלא",
   national_id: "מספר זהות",
+  id_number: "מספר זהות",
   city: "יישוב / עיר",
   street: "רחוב",
   house_number: "מס' בית",
