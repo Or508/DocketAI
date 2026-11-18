@@ -703,6 +703,11 @@ PROCESSES = (
 )
 
 
+from app.catalog.dental import dental_processes  # noqa: E402  (needs ProcessSeed above)
+
+PROCESSES = (*PROCESSES, *dental_processes(ProcessSeed))
+
+
 def _validate_catalog() -> None:
     documents = TypeAdapter(list[DocumentTypeSpec])
     fields = TypeAdapter(list[FieldSpec])

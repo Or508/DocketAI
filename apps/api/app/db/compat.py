@@ -35,6 +35,26 @@ async def ensure_case_columns() -> None:
 
 def _add_missing_case_columns(sync_conn) -> None:
     tables = inspect(sync_conn).get_table_names()
+    if "organizations" in tables:
+        present = {column["name"] for column in inspect(sync_conn).get_columns("organizations")}
+        if "profession" not in present:
+            # Every office that existed before professions is a law office.
+            sync_conn.execute(text("ALTER TABLE organizations ADD COLUMN profession VARCHAR(40) NOT NULL DEFAULT 'law'"))
+        if "ai_reading_enabled" not in present:
+            true = "true" if sync_conn.dialect.name == "postgresql" else "1"
+            sync_conn.execute(text(f"ALTER TABLE organizations ADD COLUMN ai_reading_enabled BOOLEAN NOT NULL DEFAULT {true}"))
+    if "users" in tables:
+        present = {column["name"] for column in inspect(sync_conn).get_columns("users")}
+        false = "false" if sync_conn.dialect.name == "postgresql" else "0"
+        for name, ddl in {
+            "mfa_enabled": f"BOOLEAN NOT NULL DEFAULT {false}",
+            "mfa_secret": "TEXT",
+            "mfa_pending_secret": "TEXT",
+            "mfa_last_step": "INTEGER",
+            "mfa_recovery_hashes": "JSON",
+        }.items():
+            if name not in present:
+                sync_conn.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))
     if "cases" not in tables:
         return
     existing = {column["name"] for column in inspect(sync_conn).get_columns("cases")}

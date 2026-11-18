@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     queue_enabled: bool = False
     qdrant_url: str = "http://localhost:6333"
+    # The main model. Claude answers first; Gemini is the backup and the source of embeddings.
+    ai_provider: Literal["claude", "gemini"] = "claude"
+    anthropic_api_key: str = ""
+    claude_model: str = "claude-opus-5-5"
+    claude_timeout_seconds: float = Field(default=120.0, gt=0)
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
     embedding_model: str = "text-embedding-004"
@@ -39,6 +44,10 @@ class Settings(BaseSettings):
     session_ttl_hours: int = 12
     login_max_failures: int = 5
     login_lock_minutes: int = 15
+    # Two-step login. Without MFA_SECRET_KEY the server keeps its own key file beside the database.
+    mfa_secret_key: str = ""
+    mfa_key_path: Path | None = None
+    mfa_issuer: str = "DocketFlow"
     storage_backend: Literal["local", "s3"] = "local"
     s3_bucket: str = ""
     s3_region: str = ""
@@ -90,6 +99,9 @@ class Settings(BaseSettings):
         self.database_url = _normalize_database_url(self.database_url)
         self.qdrant_url = self.qdrant_url.strip()
         self.gemini_api_key = self.gemini_api_key.strip()
+        self.anthropic_api_key = self.anthropic_api_key.strip()
+        self.mfa_secret_key = self.mfa_secret_key.strip()
+        self.claude_model = self.claude_model.strip()
         self.s3_bucket = self.s3_bucket.strip()
         self.s3_region = self.s3_region.strip()
         self.s3_endpoint_url = self.s3_endpoint_url.strip()
@@ -105,6 +117,10 @@ class Settings(BaseSettings):
                     "s3_access_key_id and s3_secret_access_key must both be set or both be blank."
                 )
         return self
+
+    @property
+    def resolved_mfa_key_path(self) -> Path:
+        return self.mfa_key_path or (API_ROOT / "data" / "mfa.key")
 
     @property
     def resolved_storage_dir(self) -> Path:

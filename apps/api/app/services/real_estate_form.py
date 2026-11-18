@@ -11,7 +11,7 @@ from pathlib import Path
 from app.services.form101 import _LEFT, _RIGHT, _build
 
 # Bump when the drawing changes, so a server redraws its copy.
-REAL_ESTATE_FORM_VERSION = 1
+REAL_ESTATE_FORM_VERSION = 2
 REAL_ESTATE_TITLE = "עסקת מקרקעין"
 REAL_ESTATE_SUBTITLE = "טופס פרטי העסקה והצהרת הרוכש"
 REAL_ESTATE_SIGNATURE_LABEL = "חתימת הרוכש"

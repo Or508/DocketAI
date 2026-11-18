@@ -196,7 +196,9 @@ def test_loading_the_default_form_puts_form_101_on_an_onboarding_case(client: Te
     stored = client.get(f"/cases/{case_id}/documents/{document_id}/file").content
     assert stored == _blank()
     drawn = sorted(path.name for path in (tmp_path / "templates").glob("form-101-*.pdf"))
-    assert drawn == ["form-101-onboarding-blank-v1.pdf"]
+    from app.services.form101 import FORM_101_VERSION
+
+    assert drawn == [f"form-101-onboarding-blank-v{FORM_101_VERSION}.pdf"]
 
     record = next(event for event in _timeline(client, case_id) if event["action"] == "default_form_loaded")
     assert record["document_id"] == document_id

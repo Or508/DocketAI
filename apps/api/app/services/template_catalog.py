@@ -31,7 +31,16 @@ logger = logging.getLogger(__name__)
 _documents = TypeAdapter(list[DocumentTypeSpec])
 _fields = TypeAdapter(list[FieldSpec])
 
-_ORDER = {"bl_6101": 0, "onboarding": 1, "real_estate": 2, "employee_onboarding": 3}
+_ORDER = {
+    "bl_6101": 0,
+    "onboarding": 1,
+    "real_estate": 2,
+    "employee_onboarding": 3,
+    "dental_treatment_plan": 4,
+    "dental_medical_questionnaire": 5,
+    "dental_botox_consent": 6,
+    "dental_ct_consent": 7,
+}
 _TEXT_HE: dict[str, tuple[str, str]] = {
     "bl_6101": (
         "בל/6101 – דיווח רב-שנתי לביטוח לאומי",
@@ -49,6 +58,22 @@ _TEXT_HE: dict[str, tuple[str, str]] = {
         "עסקת מקרקעין",
         "תיק רכישה: הסכם מכר, נסח טאבו, זיהוי הצדדים ואישורי מס. הפרטים מתמלאים על טופס העסקה, והרוכש חותם על הטופס עצמו.",
     ),
+    "dental_treatment_plan": (
+        "הסכמה לתוכנית טיפול והצעת מחיר",
+        "תוכנית הטיפול והמחיר שהמטופל מאשר לפני תחילת הטיפול. הפרטים האישיים נקראים מתעודת הזהות, והמטופל חותם בקישור.",
+    ),
+    "dental_medical_questionnaire": (
+        "שאלון רפואי",
+        "תרופות, אלרגיות ומחלות רקע לפני טיפול. הפרטים האישיים נקראים מתעודת הזהות, והמטופל משלים את השאלון וחותם בקישור.",
+    ),
+    "dental_botox_consent": (
+        "הסכמה מדעת להזרקת בוטוקס",
+        "הסכמה מדעת לטיפול ברעלן בוטולינום. המרפאה ממלאת את אזור הטיפול, התכשיר והמינון, והמטופל חותם בקישור.",
+    ),
+    "dental_ct_consent": (
+        "הסכמה לצילום CT",
+        "הסכמה לצילום CT דנטלי. המרפאה ממלאת את אזור הצילום והרופא המפנה, והמטופל חותם בקישור.",
+    ),
 }
 # The everyday name of the document a drawer holds, as shown beside a field it fills.
 _SOURCE_HE = {
@@ -57,6 +82,7 @@ _SOURCE_HE = {
     "bank_confirmation": "אישור בנק",
     "tax_form": "טופס 101",
     "title_deed": "נסח טאבו",
+    "referral": "הפניה",
 }
 
 

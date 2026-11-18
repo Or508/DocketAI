@@ -87,3 +87,5 @@ class ProcessRead(BaseModel):
     required_documents: list[DocumentTypeSpec]
     optional_documents: list[DocumentTypeSpec]
     required_fields: list[FieldSpec]
+    # The professions that use this process (app/domain/professions.py).
+    professions: list[str] = Field(default_factory=list)

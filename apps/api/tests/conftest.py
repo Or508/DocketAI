@@ -53,3 +53,15 @@ def object_storage_backend(monkeypatch: pytest.MonkeyPatch, request: pytest.Fixt
     }.items():
         if source in os.environ:
             monkeypatch.setenv(target, os.environ[source])
+
+
+@pytest.fixture(autouse=True)
+def no_live_ai_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A key in the repo's .env must never make a test call a real model."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+
+
+@pytest.fixture(autouse=True)
+def mfa_key_in_tmp(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Tests never create or read the server's real two-step login key."""
+    monkeypatch.setenv("MFA_KEY_PATH", str(tmp_path / "mfa.key"))

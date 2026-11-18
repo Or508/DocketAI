@@ -10,6 +10,7 @@ from pathlib import Path
 from app.core.config import Settings
 from app.services.fonts import resolve_hebrew_font
 from app.services.form101 import FORM_101_VERSION, build_form_101, build_onboarding_form_101
+from app.services.dental_forms import DENTAL_FORMS_VERSION, dental_form_builder
 from app.services.real_estate_form import REAL_ESTATE_FORM_VERSION, build_real_estate_form
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,15 @@ def default_form(process_key: str, settings: Settings) -> DefaultForm | None:
             filename="real_estate_official.pdf",
             title="real estate",
             missing="The real estate form could not be prepared on this server. Upload the form instead.",
+        )
+    dental = dental_form_builder(process_key)
+    if dental is not None:
+        stem = process_key.replace("_", "-")
+        return DefaultForm(
+            path=_drawn(settings, f"{stem}-blank-v{DENTAL_FORMS_VERSION}.pdf", dental),
+            filename=f"{process_key}.pdf",
+            title="dental clinic form",
+            missing="The clinic form could not be prepared on this server. Upload the form instead.",
         )
     return None
 

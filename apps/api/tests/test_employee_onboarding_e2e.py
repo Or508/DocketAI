@@ -199,7 +199,9 @@ def test_loading_the_default_form_puts_form_101_on_the_case(client: TestClient, 
     stored = client.get(f"/cases/{case_id}/documents/{document_id}/file").content
     assert stored == _blank()
     # The server keeps its drawn copy beside the other generated templates.
-    assert [path.name for path in (tmp_path / "templates").glob("form-101-blank-v*.pdf")] == ["form-101-blank-v1.pdf"]
+    from app.services.form101 import FORM_101_VERSION
+
+    assert [path.name for path in (tmp_path / "templates").glob("form-101-blank-v*.pdf")] == [f"form-101-blank-v{FORM_101_VERSION}.pdf"]
 
     record = next(event for event in _timeline(client, case_id) if event["action"] == "default_form_loaded")
     staff = client.get("/auth/me").json()

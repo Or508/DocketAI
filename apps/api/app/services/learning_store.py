@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from app.core.config import Settings
+from app.domain.ai_policy import ai_allowed
 from app.services.gemini_client import GeminiClient
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,8 @@ class QdrantLearningStore:
         if not self._enabled() or not text.strip():
             return []
         try:
+            if not ai_allowed():
+                return []
             vector = await self._gemini.embed(text[:4_000])
             import asyncio
 
@@ -70,6 +73,8 @@ class QdrantLearningStore:
             "organization_id": str(organization_id),
         }
         try:
+            if not ai_allowed():
+                return
             vector = await self._gemini.embed(excerpt)
             import asyncio
 

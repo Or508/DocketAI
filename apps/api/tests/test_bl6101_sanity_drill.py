@@ -288,9 +288,15 @@ def test_reading_is_on_for_this_process_only() -> None:
         for process in PROCESSES
     }
     assert switched["bl_6101"] == {"id_copy": True, "proof_of_address": True, "bank_confirmation": True}
-    # The Form 101 card reads the same three drawers. No other process reads anything.
+    # The Form 101 card reads the same three drawers.
     assert switched["employee_onboarding"] == switched["bl_6101"]
-    reading = {"bl_6101", "employee_onboarding"}
+    # Each dental clinic form reads only the patient's ID card, for the name and ID number.
+    from app.catalog.dental import DENTAL_KEYS
+
+    for key in DENTAL_KEYS:
+        assert switched[key] == {"id_copy": True}, key
+    # No other process reads anything.
+    reading = {"bl_6101", "employee_onboarding", *DENTAL_KEYS}
     others = [flag for key, flags in switched.items() if key not in reading for flag in flags.values()]
     assert others and not any(others)
 

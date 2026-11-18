@@ -11,6 +11,13 @@ class UnauthorizedError(AppError):
         super().__init__(message, status_code=401, code="unauthenticated")
 
 
+class MfaRequiredError(AppError):
+    """The password was right; the account also needs its authenticator code."""
+
+    def __init__(self, message: str = "Enter the code from your authenticator app.") -> None:
+        super().__init__(message, status_code=401, code="mfa_required")
+
+
 class ForbiddenError(AppError):
     def __init__(self, message: str = "Forbidden") -> None:
         super().__init__(message, status_code=403, code="forbidden")
@@ -27,8 +34,8 @@ class BadRequestError(AppError):
 
 
 class ConflictError(AppError):
-    def __init__(self, message: str) -> None:
-        super().__init__(message, status_code=409, code="conflict")
+    def __init__(self, message: str, code: str = "conflict") -> None:
+        super().__init__(message, status_code=409, code=code)
 
 
 class UnprocessableError(AppError):

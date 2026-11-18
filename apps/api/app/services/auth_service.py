@@ -9,7 +9,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
 from app.core.config import Settings
-from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import MfaRequiredError, UnauthorizedError
 from app.core.time import utcnow
 from app.domain.signing_links import as_utc
 from app.models.user import User
@@ -40,7 +40,7 @@ class AuthService:
         self.session = session
         self.settings = settings
 
-    async def login(self, email: str, password: str) -> tuple[str, datetime, User]:
+    async def login(self, email: str, password: str, code: str | None = None) -> tuple[str, datetime, User]:
         normalized = email.strip().lower()
         # The row lock stops parallel guesses from each counting only one failure.
         user = await self.session.scalar(select(User).where(User.email == normalized).with_for_update())
@@ -60,6 +60,18 @@ class AuthService:
             raise UnauthorizedError(_LOGIN_ERROR)
         if not user.is_active:
             raise UnauthorizedError(_LOGIN_ERROR)
+        if user.mfa_enabled:
+            from app.services.security_service import check_second_factor
+
+            if not (code or "").strip():
+                raise MfaRequiredError()
+            if not check_second_factor(self.settings, user, code or ""):
+                # A wrong code counts like a wrong password toward the lock.
+                user.failed_logins = int(user.failed_logins or 0) + 1
+                if user.failed_logins >= self.settings.login_max_failures:
+                    user.locked_until = utcnow() + timedelta(minutes=self.settings.login_lock_minutes)
+                await self.session.commit()
+                raise MfaRequiredError("The code is incorrect or has expired.")
         user.failed_logins = 0
         user.locked_until = None
         token = secrets.token_urlsafe(32)

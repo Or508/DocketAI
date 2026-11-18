@@ -67,6 +67,7 @@ from app.models.case import Case
 from app.models.case_note import CaseNote
 from app.models.document import Document
 from app.models.process_definition import ProcessDefinition
+from app.domain.ai_policy import apply_office_policy
 from app.models.intake_link import IntakeLink
 from app.models.signing_link import SigningLink
 from app.schemas.case import CaseAudit, CaseCertificate, CaseCreate, CaseRead
@@ -376,6 +377,7 @@ class CaseService:
 
     async def _ingest(self, case_id: uuid.UUID, actor: str = "office") -> None:
         case = await self._get_case(case_id)
+        await apply_office_policy(self.session, case.organization_id)
         required, optional = _document_specs(case.process_definition)
         catalog = required + optional
         fields = _field_specs(case.process_definition)
@@ -797,6 +799,8 @@ class CaseService:
         source: ValueSource = "office",
     ) -> ChatStart:
         case = await self._get_case(case_id)
+        # The streamed reply that follows runs in a task started after this, and inherits the answer.
+        await apply_office_policy(self.session, case.organization_id)
         fields = _field_specs(case.process_definition)
         values = {str(key): str(value) for key, value in (case.field_values or {}).items()}
         message = payload.message.strip()

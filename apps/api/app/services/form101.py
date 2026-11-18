@@ -16,7 +16,8 @@ from app.domain.text_layout import shape_for_pdf
 from app.services.pdf_filler import _pin_dates, _stable_id
 
 # Bump when the drawing changes, so a server redraws its copy.
-FORM_101_VERSION = 1
+# 2: the second page is headed by the form's title, not by its last section.
+FORM_101_VERSION = 2
 FORM_101_TITLE = "טופס 101"
 FORM_101_SUBTITLE = "כרטיס עובד ובקשה להקלה ולתיאום מס"
 SIGNATURE_LABEL = "חתימת העובד"
@@ -141,8 +142,9 @@ def _build(
         first = document.new_page(width=_WIDTH, height=_HEIGHT)
         first.insert_font(fontname="rubik", fontfile=str(font_path))
         top = heading(first, 44.0)
-        for title, rows in sections:
-            text(first, _RIGHT, top + 10, title, 10.5, _TIDE)
+        # The section name must not reuse `title`: the second page's heading reads it.
+        for section_title, rows in sections:
+            text(first, _RIGHT, top + 10, section_title, 10.5, _TIDE)
             top += 20
             for row in rows:
                 for label, x0, x1, digits in row:

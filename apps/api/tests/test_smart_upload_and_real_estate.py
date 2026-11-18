@@ -22,7 +22,7 @@ from app.services.flat_form import FlatProfile, read_flat_anchors, signature_box
 from app.services.fonts import resolve_hebrew_font
 from app.services.form101 import build_form_101
 from app.services.pdf_filler import _readback_matches
-from app.services.real_estate_form import build_real_estate_form
+from app.services.real_estate_form import REAL_ESTATE_FORM_VERSION, build_real_estate_form
 from tests.support import SignedOut, authenticate
 from tests.test_bl6101_sanity_drill import _ID, _PNG_B64, _auth, _classify, _pdf, _set, _sign_body, _token, _upload
 
@@ -378,7 +378,7 @@ def test_loading_the_default_form_puts_the_real_estate_form_on_the_case(client: 
     stored = client.get(f"/cases/{case_id}/documents/{forms[0]['document_id']}/file").content
     assert stored == _deal_blank()
     assert [path.name for path in (tmp_path / "templates").glob("real-estate-blank-v*.pdf")] == [
-        "real-estate-blank-v1.pdf"
+        f"real-estate-blank-v{REAL_ESTATE_FORM_VERSION}.pdf"
     ]
     record = next(event for event in _timeline(client, case_id) if event["action"] == "default_form_loaded")
     assert record["metadata"]["sha256"] == hashlib.sha256(stored).hexdigest()
