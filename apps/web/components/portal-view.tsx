@@ -132,7 +132,7 @@ export function PortalViewScreen({ token }: { token: string }) {
     <main className="mx-auto flex min-w-0 max-w-3xl flex-col gap-5 overflow-x-clip px-4 py-8">
       <header>
         <p className="text-sm font-semibold text-tide">חתימת לקוח</p>
-        <h1 className="font-serif text-4xl">{processLabel(view.process.name, "בל/6101 – דיווח רב-שנתי ביטוח לאומי")}</h1>
+        <h1 className="font-serif text-4xl">{processLabel(view.process.name, view.process.name)}</h1>
         {view.client_name ? <p className="mt-2 text-lg">{view.client_name}</p> : null}
       </header>
       <ol aria-label="התקדמות החתימה" className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">

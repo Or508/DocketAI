@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { OfficeTopNav } from "@/components/OfficeTopNav";
+import { api } from "@/lib/api";
+import { caseOpeners, clientPlural, type CaseOpener } from "@/lib/filing";
 
 type ClientCase = {
   case_id: string;
@@ -34,13 +36,11 @@ const PROCESS_NAMES: Record<string, string> = {
   onboarding: "טופס 101 – קליטת עובד",
   employee_onboarding: "טופס 101",
   real_estate: "עסקת מקרקעין",
+  dental_treatment_plan: "הסכמה לתוכנית טיפול והצעת מחיר",
+  dental_medical_questionnaire: "שאלון רפואי",
+  dental_botox_consent: "הסכמה מדעת להזרקת בוטוקס",
+  dental_ct_consent: "הסכמה לצילום CT",
 };
-// The three cases a client's vault can open in one click.
-const QUICK_CASES = [
-  { process_type: "bl_6101", label: "בל/6101" },
-  { process_type: "employee_onboarding", label: "טופס 101" },
-  { process_type: "real_estate", label: "עסקת מקרקעין" },
-] as const;
 const STATUS_NAMES: Record<string, string> = {
   draft: "טיוטה",
   processing: "בקריאה",
@@ -79,6 +79,8 @@ export function ClientsScreen() {
   const [clients, setClients] = useState<Client[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [clientTerm, setClientTerm] = useState("לקוח");
+  const [openers, setOpeners] = useState<CaseOpener[]>([]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -97,6 +99,18 @@ export function ClientsScreen() {
 
   useEffect(() => {
     void load();
+    let cancelled = false;
+    api
+      .me()
+      .then(async (profile) => {
+        if (cancelled) return;
+        setClientTerm(profile.client_term_he || "לקוח");
+        setOpeners(caseOpeners(await api.processes(profile.profession)));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [load]);
 
   const shown = useMemo(() => {
@@ -121,9 +135,9 @@ export function ClientsScreen() {
       <OfficeTopNav />
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-ink">לקוחות</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-ink">{clientPlural(clientTerm)}</h1>
           <p className="mt-3 max-w-2xl text-mist">
-            כל לקוח של המשרד, הפרטים שנקראו מהמסמכים שלו והתיקים שנפתחו עבורו. מסמכים שכבר נמסרו נשמרים בכספת, ותיק חדש
+            כל {clientTerm} של המשרד, הפרטים שנקראו מהמסמכים שלו והתיקים שנפתחו עבורו. מסמכים שכבר נמסרו נשמרים בכספת, ותיק חדש
             נפתח מהם בלחיצה אחת.
           </p>
         </div>
@@ -142,15 +156,15 @@ export function ClientsScreen() {
       {clients ? (
         <>
           <dl className="mt-8 grid grid-cols-3 gap-3 text-center">
-            <Count label="לקוחות" value={totals.clients} />
+            <Count label={clientPlural(clientTerm)} value={totals.clients} />
             <Count label="תיקים" value={totals.cases} />
-            <Count label="לקוחות עם מסמכים בכספת" value={totals.ready} />
+            <Count label={`${clientPlural(clientTerm)} עם מסמכים בכספת`} value={totals.ready} />
           </dl>
 
           {clients.length > 0 ? (
             <div className="mt-6">
               <label htmlFor="client-search" className="block text-sm font-semibold">
-                חיפוש לקוח
+                חיפוש {clientTerm}
               </label>
               <input
                 id="client-search"
@@ -163,14 +177,14 @@ export function ClientsScreen() {
             </div>
           ) : (
             <p className="mt-8 text-mist">
-              עדיין אין לקוחות בספר. לקוח מופיע כאן ברגע שנפתח עבורו תיק עם שם לקוח או מספר זהות.
+              עדיין אין {clientPlural(clientTerm)} בספר. {clientTerm} מופיע כאן ברגע שנפתח עבורו תיק עם שם או מספר זהות.
             </p>
           )}
-          {clients.length > 0 && shown?.length === 0 ? <p className="mt-6 text-mist">לא נמצא לקוח מתאים.</p> : null}
+          {clients.length > 0 && shown?.length === 0 ? <p className="mt-6 text-mist">לא נמצא {clientTerm} מתאים.</p> : null}
 
           <div className="mt-6 space-y-6">
             {shown?.map((client) => (
-              <ClientCard key={client.client_key} client={client} />
+              <ClientCard key={client.client_key} client={client} clientTerm={clientTerm} openers={openers} />
             ))}
           </div>
         </>
@@ -179,7 +193,7 @@ export function ClientsScreen() {
   );
 }
 
-function ClientCard({ client }: { client: Client }) {
+function ClientCard({ client, clientTerm, openers }: { client: Client; clientTerm: string; openers: CaseOpener[] }) {
   const headingId = `client-${client.latest_case_id}`;
   return (
     <article aria-labelledby={headingId} className="rounded-lg border border-ink/15 bg-white p-6 shadow-card">
@@ -282,12 +296,12 @@ function ClientCard({ client }: { client: Client }) {
         </div>
       </section>
 
-      <QuickCase client={client} />
+      <QuickCase client={client} clientTerm={clientTerm} openers={openers} />
     </article>
   );
 }
 
-function QuickCase({ client }: { client: Client }) {
+function QuickCase({ client, clientTerm, openers }: { client: Client; clientTerm: string; openers: CaseOpener[] }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const reuses = client.reusable_docs_count > 0;
@@ -322,22 +336,22 @@ function QuickCase({ client }: { client: Client }) {
 
   return (
     <section className="mt-6 border-t border-line pt-5" aria-label="פתיחת תיק חדש">
-      <h3 className="text-sm font-semibold">פתיחת תיק חדש ללקוח</h3>
+      <h3 className="text-sm font-semibold">פתיחת תיק חדש ל{clientTerm}</h3>
       <p className="mt-1 text-sm text-mist">
         {reuses
           ? "המסמכים שבכספת מועתקים לתיק החדש, הטופס נטען והפרטים מתמלאים מיד."
           : "אין עדיין מסמכים בכספת: התיק ייפתח עם הטופס והפרטים הידועים, והמסמכים יועלו בתיק עצמו."}
       </p>
       <div className="mt-3 flex flex-wrap gap-3">
-        {QUICK_CASES.map((item) => (
+        {openers.map((item) => (
           <button
-            key={item.process_type}
+            key={item.key}
             type="button"
             disabled={busy !== null}
-            onClick={() => void open(item.process_type)}
+            onClick={() => void open(item.key)}
             className="rounded-md bg-tide px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {busy === item.process_type ? "פותחים תיק…" : `+ ${item.label}`}
+            {busy === item.key ? "פותחים תיק…" : `+ ${item.label}`}
           </button>
         ))}
       </div>

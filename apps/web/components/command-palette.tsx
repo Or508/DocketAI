@@ -5,15 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ApiError, api } from "@/lib/api";
-import { processFamily, processLabel, type ProcessFamily } from "@/lib/filing";
+import { caseOpeners, processLabel } from "@/lib/filing";
 import { readOfficeSettings } from "@/lib/office-settings";
-
-async function officeJson<T>(path: string): Promise<T> {
-  const response = await fetch(`/api/office${path}`, { cache: "no-store" });
-  if (response.status === 401) throw new ApiError("יש להתחבר כדי לחפש תיקים.", 401);
-  if (!response.ok) throw new ApiError("לא ניתן לטעון את התיקים.", response.status);
-  return (await response.json()) as T;
-}
 
 const SECTIONS = [
   { href: "/cases", label: "ארון תיקים" },
@@ -25,11 +18,6 @@ const SECTIONS = [
   { href: "/settings", label: "הגדרות" },
 ] as const;
 
-const QUICK = [
-  { prefer: "bl_6101", family: "bl_6101" as const, label: "בל/6101" },
-  { prefer: "employee_onboarding", family: "onboarding" as const, label: "טופס 101" },
-  { prefer: "real_estate", family: "real_estate" as const, label: "עסקת מקרקעין" },
-] as const;
 
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const router = useRouter();
@@ -44,7 +32,13 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     let cancelled = false;
     setQuery("");
     setError(null);
-    Promise.all([officeJson<CaseRead[]>("/cases"), officeJson<ProcessRead[]>("/processes")])
+    api
+      .me()
+      .catch(() => null)
+      .then(async (profile) => {
+        const [nextCases, nextProcesses] = await Promise.all([api.cases(), api.processes(profile?.profession)]);
+        return [nextCases, nextProcesses] as const;
+      })
       .then(([nextCases, nextProcesses]) => {
         if (cancelled) return;
         setCases(nextCases);
@@ -81,19 +75,20 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   }, [cases, needle]);
 
   const sections = needle ? SECTIONS.filter((item) => item.label.toLowerCase().includes(needle)) : SECTIONS;
-  const quick = needle ? QUICK.filter((item) => item.label.toLowerCase().includes(needle)) : QUICK;
+  const openers = caseOpeners(processes);
+  const quick = needle ? openers.filter((item) => item.label.toLowerCase().includes(needle)) : openers;
 
   function go(href: string) {
     onOpenChange(false);
     router.push(href);
   }
 
-  async function openQuick(prefer: string, family: ProcessFamily, label: string) {
+  async function openQuick(key: string, label: string) {
     setBusy(true);
     setError(null);
     try {
       const catalog = processes.length ? processes : await api.processes();
-      const match = catalog.find((item) => item.key === prefer) ?? catalog.find((item) => processFamily(item.key) === family);
+      const match = catalog.find((item) => item.key === key);
       if (!match) throw new ApiError("התהליך לא נמצא בקטלוג.", 404);
       const created = await api.createCase({ name: label, process_key: match.key });
       if (readOfficeSettings().autoLoadForm) {
@@ -172,12 +167,12 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             <p className="text-xs font-bold text-mist">+ פתיחת תיק מהיר</p>
             <ul className="mt-2 grid gap-1">
               {quick.map((item) => (
-                <li key={item.family}>
+                <li key={item.key}>
                   <button
                     type="button"
                     className="w-full rounded-md px-2 py-2 text-start text-sm font-semibold hover:bg-ink/5 disabled:opacity-50"
                     disabled={busy}
-                    onClick={() => void openQuick(item.prefer, item.family, item.label)}
+                    onClick={() => void openQuick(item.key, item.label)}
                   >
                     {item.label}
                   </button>

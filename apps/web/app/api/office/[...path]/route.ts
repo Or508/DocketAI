@@ -31,7 +31,20 @@ function encodedSegments(raw: string[]): string[] | null {
 
 function allowed(segments: string[]): boolean {
   const joined = segments.join("/");
-  if (joined === "auth/me") return true;
+  if (
+    joined === "auth/me" ||
+    joined === "auth/security" ||
+    joined === "auth/password" ||
+    joined === "auth/mfa/setup" ||
+    joined === "auth/mfa/enable" ||
+    joined === "auth/mfa/disable" ||
+    joined === "auth/mfa/recovery-codes" ||
+    joined === "organization" ||
+    joined === "organization/profession" ||
+    joined === "organization/ai-reading"
+  ) {
+    return true;
+  }
   return segments[0] === "cases" || segments[0] === "processes";
 }
 
@@ -97,8 +110,20 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
       responseHeaders.set("Content-Disposition", inline ? disposition.replace(/^attachment/i, "inline") : disposition);
     }
     responseHeaders.set("Cache-Control", "no-store");
+    if (upstream.status === 401) {
+      const text = await upstream.text();
+      let clearCookie = true;
+      try {
+        const parsed = JSON.parse(text) as { detail?: unknown };
+        if (parsed.detail === "The current password is incorrect.") clearCookie = false;
+      } catch {
+        clearCookie = true;
+      }
+      const response = new NextResponse(text, { status: 401, headers: responseHeaders });
+      if (clearCookie) response.cookies.set(OFFICE_COOKIE, "", officeCookieOptions(0));
+      return response;
+    }
     const response = new NextResponse(upstream.body, { status: upstream.status, headers: responseHeaders });
-    if (upstream.status === 401) response.cookies.set(OFFICE_COOKIE, "", officeCookieOptions(0));
     return response;
   } catch {
     return NextResponse.json(

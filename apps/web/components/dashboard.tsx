@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { OfficeTopNav } from "@/components/OfficeTopNav";
 import { ApiError, api, detailFrom, downloadCaseArchive } from "@/lib/api";
 import { archiveFilename } from "@/lib/dispatch";
-import { dispatchFormTitle, folderFromWorkspace, processFamily, processLabel, type FolderTone, type ProcessFamily } from "@/lib/filing";
+import { caseOpeners, clientPlural, dispatchFormTitle, folderFromWorkspace, processLabel, sameProcessGroup, type CaseOpener, type FolderTone } from "@/lib/filing";
 import { hebrewOfficeError } from "@/lib/hebrew";
 import { readOfficeSettings } from "@/lib/office-settings";
 import { formatWhen } from "@/lib/utils";
@@ -24,23 +24,8 @@ type Bucket = "all" | "preparing" | "awaiting" | "done";
 const BUCKETS: { id: Bucket; label: string }[] = [
   { id: "all", label: "הכל" },
   { id: "preparing", label: "בהכנה במשרד" },
-  { id: "awaiting", label: "ממתין לחתימת לקוח" },
+  { id: "awaiting", label: "ממתין לחתימה" },
   { id: "done", label: "נחתם" },
-];
-
-type ProcessFilter = "all" | Exclude<ProcessFamily, "other">;
-
-const PROCESS_FILTERS: { id: ProcessFilter; label: string }[] = [
-  { id: "all", label: "כל הסוגים" },
-  { id: "bl_6101", label: "בל/6101" },
-  { id: "onboarding", label: "טופס 101" },
-  { id: "real_estate", label: "מקרקעין" },
-];
-
-const NEW_CASE_KINDS = [
-  { family: "bl_6101" as const, prefer: "bl_6101", label: "בל/6101", detail: "דיווח רב-שנתי לביטוח לאומי" },
-  { family: "onboarding" as const, prefer: "employee_onboarding", label: "טופס 101", detail: "קליטת עובד חדש" },
-  { family: "real_estate" as const, prefer: "real_estate", label: "עסקת מקרקעין", detail: "חוזה מכר ופרטי הנכס" },
 ];
 
 function isDraft(tone: FolderTone) {
@@ -73,17 +58,27 @@ export function Dashboard() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [processFilter, setProcessFilter] = useState<ProcessFilter>("all");
+  const [processFilter, setProcessFilter] = useState("all");
+  const [clientTerm, setClientTerm] = useState("לקוח");
   const [selected, setSelected] = useState<string[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.processes(), api.cases()])
-      .then(async ([nextProcesses, nextCases]) => {
+    api
+      .me()
+      .catch(() => null)
+      .then(async (profile) => {
+        if (cancelled) return;
+        if (profile) setClientTerm(profile.client_term_he || "לקוח");
+        return Promise.all([api.processes(profile?.profession), api.cases()]);
+      })
+      .then(async (loaded) => {
+        if (!loaded || cancelled) return;
+        const [nextProcesses, nextCases] = loaded;
         if (cancelled) return;
         setProcesses(nextProcesses);
-        const loaded = await Promise.all(
+        const nextCards = await Promise.all(
           nextCases.map(async (item) => {
             try {
               return toCard(item, await api.workspace(item.id));
@@ -92,7 +87,7 @@ export function Dashboard() {
             }
           }),
         );
-        if (!cancelled) setCards(loaded);
+        if (!cancelled) setCards(nextCards);
       })
       .catch((reason: unknown) => {
         if (!cancelled) {
@@ -227,13 +222,16 @@ export function Dashboard() {
   const needle = query.trim().toLowerCase();
   const visible = all.filter((card) => {
     if (bucket !== "all" && bucketOf(card.tone) !== bucket) return false;
-    if (processFilter !== "all" && processFamily(card.item.process_key) !== processFilter) return false;
+    if (processFilter !== "all" && !sameProcessGroup(card.item.process_key, processFilter)) return false;
     if (!needle) return true;
     const haystack = [card.item.client_name, card.item.name, card.item.id].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(needle);
   });
   const selectedIds = selected.filter((id) => visible.some((card) => card.item.id === id && isDraft(card.tone)));
   const countOf = (id: Bucket) => (id === "all" ? all.length : all.filter((card) => bucketOf(card.tone) === id).length);
+  const openers = caseOpeners(processes);
+  const buckets = BUCKETS.map((item) => (item.id === "awaiting" ? { ...item, label: `ממתין לחתימת ${clientTerm}` } : item));
+  const processFilters = [{ id: "all", label: "כל הסוגים" }, ...openers.map((item) => ({ id: item.key, label: item.label }))];
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-5 py-6 lg:px-10 lg:py-10">
@@ -241,8 +239,8 @@ export function Dashboard() {
 
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-ink">תיקיות לקוח</h1>
-          <p className="mt-1 text-mist">כל תיקי הלקוחות של המשרד, ממה שעוד חסר ועד מה שכבר נחתם.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-ink">{clientTerm === "לקוח" ? "תיקיות לקוח" : `תיקי ${clientTerm}`}</h1>
+          <p className="mt-1 text-mist">כל תיקי ה{clientPlural(clientTerm)} של המשרד, ממה שעוד חסר ועד מה שכבר נחתם.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" onClick={() => setCreateOpen(true)}>
@@ -263,8 +261,8 @@ export function Dashboard() {
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="חיפוש לפי שם לקוח או מספר תיק"
-              aria-label="חיפוש לפי שם לקוח או מספר תיק"
+              placeholder={`חיפוש לפי שם ${clientTerm} או מספר תיק`}
+              aria-label={`חיפוש לפי שם ${clientTerm} או מספר תיק`}
               className="h-10 ps-9 shadow-none"
             />
           </div>
@@ -272,11 +270,11 @@ export function Dashboard() {
         <div className="space-y-2 border-b border-line bg-[#fbfbf9] px-4 py-3">
           <Segmented
             label="סינון לפי מצב התיק"
-            items={BUCKETS.map((item) => ({ id: item.id, label: item.label, count: cards ? countOf(item.id) : null }))}
+            items={buckets.map((item) => ({ id: item.id, label: item.label, count: cards ? countOf(item.id) : null }))}
             value={bucket}
             onChange={setBucket}
           />
-          <Segmented label="סינון לפי סוג תהליך" items={PROCESS_FILTERS} value={processFilter} onChange={setProcessFilter} />
+          <Segmented label="סינון לפי סוג תהליך" items={processFilters} value={processFilter} onChange={setProcessFilter} />
         </div>
 
         {selectedIds.length > 0 ? (
@@ -300,7 +298,7 @@ export function Dashboard() {
         ) : all.length === 0 ? (
           <EmptyState
             title="הארון עדיין ריק"
-            body="פתחו את התיק הראשון: בחרו לקוח ותהליך, והמערכת תבקש ממנו את המסמכים ותמלא את הטופס."
+            body={`פתחו את התיק הראשון: בחרו ${clientTerm} ותהליך, והמערכת תבקש ממנו את המסמכים ותמלא את הטופס.`}
             action={
               <Button type="button" onClick={() => setCreateOpen(true)}>
                 <Plus aria-hidden className="h-4 w-4" />
@@ -331,7 +329,8 @@ export function Dashboard() {
       <NewCaseDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        processes={processes}
+        openers={openers}
+        clientTerm={clientTerm}
         onCreated={(id) => router.push(`/cases/${id}`)}
       />
     </main>
@@ -341,17 +340,19 @@ export function Dashboard() {
 function NewCaseDialog({
   open,
   onOpenChange,
-  processes,
+  openers,
+  clientTerm,
   onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  processes: ProcessRead[];
+  openers: CaseOpener[];
+  clientTerm: string;
   onCreated: (id: string) => void;
 }) {
   const [clientName, setClientName] = useState("");
   const [caseName, setCaseName] = useState("");
-  const [family, setFamily] = useState<(typeof NEW_CASE_KINDS)[number]["family"]>("bl_6101");
+  const [processKey, setProcessKey] = useState("");
   const [loadForm, setLoadForm] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -363,27 +364,22 @@ function NewCaseDialog({
     setCaseName("");
     setError(null);
     setBusy(false);
+    setProcessKey(openers[0]?.key ?? "");
     setLoadForm(readOfficeSettings().autoLoadForm);
-  }, [open]);
+  }, [open, openers]);
 
-  const kinds = NEW_CASE_KINDS.map((kind) => ({
-    ...kind,
-    process:
-      processes.find((process) => process.key === kind.prefer) ??
-      processes.find((process) => processFamily(process.key) === kind.family),
-  }));
-  const chosen = kinds.find((kind) => kind.family === family);
+  const chosen = openers.find((item) => item.key === processKey) ?? openers[0];
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!chosen?.process) return;
+    if (!chosen) return;
     setBusy(true);
     setError(null);
     try {
       const client = clientName.trim();
       const created = await api.createCase({
         name: caseName.trim() || client || chosen.label,
-        process_key: chosen.process.key,
+        process_key: chosen.key,
         client_name: client || undefined,
       });
       if (loadForm) {
@@ -404,11 +400,11 @@ function NewCaseDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[min(92vw,34rem)]">
         <DialogTitle>תיק חדש</DialogTitle>
-        <p className="mt-1 text-sm text-mist">בחרו לקוח ותהליך. את המסמכים והפרטים משלימים בתוך התיק.</p>
+        <p className="mt-1 text-sm text-mist">בחרו {clientTerm} ותהליך. את המסמכים והפרטים משלימים בתוך התיק.</p>
         <form onSubmit={submit} className="mt-5 space-y-5">
           <div>
             <label className="block text-sm font-semibold text-ink" htmlFor="new-client">
-              שם הלקוח
+              שם ה{clientTerm}
             </label>
             <Input
               id="new-client"
@@ -422,26 +418,23 @@ function NewCaseDialog({
 
           <fieldset>
             <legend className="text-sm font-semibold text-ink">תהליך</legend>
-            <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
-              {kinds.map((kind) => {
-                const active = kind.family === family;
+            <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+              {openers.map((kind) => {
+                const active = kind.key === chosen?.key;
                 return (
                   <label
-                    key={kind.family}
-                    className={`cursor-pointer rounded-md border p-3 transition-colors ${
-                      kind.process ? "" : "pointer-events-none opacity-50"
-                    } ${active ? "border-tide bg-mint ring-1 ring-tide" : "border-line hover:border-ink/25"}`}
+                    key={kind.key}
+                    className={`cursor-pointer rounded-md border p-3 transition-colors ${active ? "border-tide bg-mint ring-1 ring-tide" : "border-line hover:border-ink/25"}`}
                   >
                     <input
                       type="radio"
                       name="new-case-kind"
                       className="sr-only"
                       checked={active}
-                      disabled={!kind.process}
-                      onChange={() => setFamily(kind.family)}
+                      onChange={() => setProcessKey(kind.key)}
                     />
                     <span className="block text-sm font-semibold text-ink">{kind.label}</span>
-                    <span className="mt-0.5 block text-xs text-mist">{kind.detail}</span>
+                    {kind.detail ? <span className="mt-0.5 block text-xs text-mist">{kind.detail}</span> : null}
                   </label>
                 );
               })}
@@ -484,7 +477,7 @@ function NewCaseDialog({
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               ביטול
             </Button>
-            <Button type="submit" disabled={busy || !chosen?.process}>
+            <Button type="submit" disabled={busy || !chosen}>
               {busy ? "פותח…" : "פתיחת התיק"}
             </Button>
           </div>

@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { OfficeTopNav } from "@/components/OfficeTopNav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OfficePanel } from "./office-panel";
+import { SecurityPanel } from "./security-panel";
 import {
   DEFAULT_OFFICE_SETTINGS,
   readOfficeSettings,
@@ -16,6 +18,7 @@ import {
 export function SettingsScreen() {
   const [settings, setSettings] = useState<OfficeSettings>(DEFAULT_OFFICE_SETTINGS);
   const [notice, setNotice] = useState<string | null>(null);
+  const [tab, setTab] = useState<"office" | "security">("office");
 
   useEffect(() => {
     setSettings(readOfficeSettings());
@@ -45,6 +48,30 @@ export function SettingsScreen() {
         <p className="mt-3 text-mist">ההגדרות נשמרות בדפדפן הזה ומשמשות את הודעות הוואטסאפ, האימייל ופתיחת התיק המהירה.</p>
       </header>
 
+      <div className="mt-6 flex gap-2" role="tablist" aria-label="חלקי ההגדרות">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "office"}
+          className={`rounded-md px-4 py-2 text-sm font-semibold ${tab === "office" ? "bg-tide text-white" : "border border-line bg-white"}`}
+          onClick={() => setTab("office")}
+        >
+          משרד
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "security"}
+          className={`rounded-md px-4 py-2 text-sm font-semibold ${tab === "security" ? "bg-tide text-white" : "border border-line bg-white"}`}
+          onClick={() => setTab("security")}
+        >
+          אבטחה
+        </button>
+      </div>
+
+      {tab === "security" ? <SecurityPanel /> : null}
+
+      {tab === "office" ? (
       <form
         className="mt-8 grid gap-6"
         onSubmit={(event) => {
@@ -52,6 +79,8 @@ export function SettingsScreen() {
           save();
         }}
       >
+        <OfficePanel />
+
         <section className="rounded-lg border border-ink/15 bg-white p-5">
           <h2 className="font-serif text-2xl">פרטי המשרד ומיתוג</h2>
           <label className="mt-4 block text-sm font-semibold" htmlFor="office-name">
@@ -129,6 +158,7 @@ export function SettingsScreen() {
           </Button>
         </div>
       </form>
+      ) : null}
     </main>
   );
 }

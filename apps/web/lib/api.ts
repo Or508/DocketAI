@@ -51,7 +51,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
   const response = await fetch(`${base}${path}`, { ...init, headers, cache: "no-store" });
-  if (response.status === 401) redirectToLogin();
   if (!response.ok) {
     let message = response.statusText;
     try {
@@ -59,14 +58,69 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       message = response.statusText;
     }
+    if (response.status === 401 && message !== "The current password is incorrect.") redirectToLogin();
     throw new ApiError(message || "Request failed", response.status);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
+export interface OfficeProfile {
+  id: string;
+  email: string;
+  display_name: string;
+  organization_id: string;
+  organization_name: string;
+  profession: string;
+  profession_label_he: string;
+  client_term_he: string;
+  case_term_he: string;
+}
+
+export interface ProfessionOption {
+  key: string;
+  label_he: string;
+  client_term_he: string;
+  case_term_he: string;
+}
+
+export interface OrganizationProfile {
+  name: string;
+  profession: ProfessionOption;
+  ai_reading_enabled: boolean;
+  professions: ProfessionOption[];
+}
+
+export interface SecurityStatus {
+  mfa_enabled: boolean;
+  recovery_codes_left: number;
+  min_password_length: number;
+}
+
+export interface MfaSetup {
+  secret: string;
+  otpauth_uri: string;
+}
+
 export const api = {
-  processes: () => request<ProcessRead[]>("/processes"),
+  me: () => request<OfficeProfile>("/auth/me"),
+  organization: () => request<OrganizationProfile>("/organization"),
+  setProfession: (profession: string) =>
+    request<OrganizationProfile>("/organization/profession", { method: "PUT", body: JSON.stringify({ profession }) }),
+  setAiReading: (enabled: boolean) =>
+    request<OrganizationProfile>("/organization/ai-reading", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  security: () => request<SecurityStatus>("/auth/security"),
+  changePassword: (current_password: string, new_password: string) =>
+    request<void>("/auth/password", { method: "POST", body: JSON.stringify({ current_password, new_password }) }),
+  mfaSetup: () => request<MfaSetup>("/auth/mfa/setup", { method: "POST" }),
+  mfaEnable: (code: string) =>
+    request<{ recovery_codes: string[] }>("/auth/mfa/enable", { method: "POST", body: JSON.stringify({ code }) }),
+  mfaDisable: (password: string, code: string) =>
+    request<void>("/auth/mfa/disable", { method: "POST", body: JSON.stringify({ password, code }) }),
+  mfaRecoveryCodes: (password: string, code: string) =>
+    request<{ recovery_codes: string[] }>("/auth/mfa/recovery-codes", { method: "POST", body: JSON.stringify({ password, code }) }),
+  processes: (profession?: string) =>
+    request<ProcessRead[]>(profession ? `/processes?profession=${encodeURIComponent(profession)}` : "/processes"),
   cases: () => request<CaseRead[]>("/cases"),
   createCase: (body: { name: string; process_key: string; client_name?: string }) =>
     request<CaseRead>("/cases", { method: "POST", body: JSON.stringify(body) }),

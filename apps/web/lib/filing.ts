@@ -18,6 +18,14 @@ export const PROCESS_LABEL: Record<string, string> = {
   real_estate: "עסקת מקרקעין",
   real_estate_closing: "עסקת מקרקעין",
   "Real estate closing": "עסקת מקרקעין",
+  dental_treatment_plan: "הסכמה לתוכנית טיפול והצעת מחיר",
+  "Dental treatment plan consent": "הסכמה לתוכנית טיפול והצעת מחיר",
+  dental_medical_questionnaire: "שאלון רפואי",
+  "Dental medical questionnaire": "שאלון רפואי",
+  dental_botox_consent: "הסכמה מדעת להזרקת בוטוקס",
+  "Botulinum toxin injection consent": "הסכמה מדעת להזרקת בוטוקס",
+  dental_ct_consent: "הסכמה לצילום CT",
+  "Dental CT scan consent": "הסכמה לצילום CT",
 };
 
 export type ProcessFamily = "bl_6101" | "onboarding" | "real_estate" | "other";
@@ -95,6 +103,48 @@ export const FIELD_LABEL: Record<string, string> = {
 
 export function processLabel(key: string, fallback: string) {
   return PROCESS_LABEL[key] ?? fallback;
+}
+
+export function clientPlural(term: string) {
+  return term === "מטופל" ? "מטופלים" : "לקוחות";
+}
+
+const LAW_OPENERS = [
+  { prefer: "bl_6101", family: "bl_6101" as const, label: "בל/6101", detail: "דיווח רב-שנתי לביטוח לאומי" },
+  { prefer: "employee_onboarding", family: "onboarding" as const, label: "טופס 101", detail: "קליטת עובד חדש" },
+  { prefer: "real_estate", family: "real_estate" as const, label: "עסקת מקרקעין", detail: "חוזה מכר ופרטי הנכס" },
+];
+
+export interface CaseOpener {
+  key: string;
+  label: string;
+  detail: string;
+}
+
+/** Law processes stay grouped. Every other process from the profession catalog is its own opener. */
+export function caseOpeners(processes: { key: string; name: string }[]): CaseOpener[] {
+  const used = new Set<string>();
+  const openers: CaseOpener[] = [];
+  for (const kind of LAW_OPENERS) {
+    const process =
+      processes.find((item) => item.key === kind.prefer) ??
+      processes.find((item) => processFamily(item.key) === kind.family);
+    if (!process) continue;
+    for (const item of processes) {
+      if (processFamily(item.key) === kind.family) used.add(item.key);
+    }
+    openers.push({ key: process.key, label: kind.label, detail: kind.detail });
+  }
+  for (const process of processes) {
+    if (used.has(process.key)) continue;
+    openers.push({ key: process.key, label: processLabel(process.key, process.name), detail: "" });
+  }
+  return openers;
+}
+
+export function sameProcessGroup(key: string, filter: string) {
+  if (processFamily(filter) === "other") return key === filter;
+  return processFamily(key) === processFamily(filter);
 }
 
 export function folderTone(input: {

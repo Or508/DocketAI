@@ -18,6 +18,12 @@ export async function POST(request: Request) {
       cache: "no-store",
     });
     if (!upstream.ok) {
+      if (upstream.status === 401) {
+        const failure = (await upstream.json().catch(() => null)) as { detail?: unknown; code?: unknown } | null;
+        const detail = typeof failure?.detail === "string" ? failure.detail : "Email or password is incorrect.";
+        const code = typeof failure?.code === "string" ? failure.code : "unauthenticated";
+        return NextResponse.json({ detail, code }, { status: 401, headers: { "Cache-Control": "no-store" } });
+      }
       return NextResponse.json(
         { detail: "Email or password is incorrect." },
         { status: upstream.status, headers: { "Cache-Control": "no-store" } },
