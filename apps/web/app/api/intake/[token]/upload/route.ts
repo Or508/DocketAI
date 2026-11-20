@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { clientIpHeaders } from "@/lib/server/client-ip";
 import { sameOrigin } from "@/lib/server/office-session";
 
 export const runtime = "nodejs";
@@ -58,6 +59,7 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     const upstream = await fetch(`${base}/intake/${token}/upload`, {
       method: "POST",
       body: outgoing,
+      headers: clientIpHeaders(request),
       cache: "no-store",
     });
     return new NextResponse(await upstream.text(), {

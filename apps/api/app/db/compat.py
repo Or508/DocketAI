@@ -35,6 +35,12 @@ async def ensure_case_columns() -> None:
 
 def _add_missing_case_columns(sync_conn) -> None:
     tables = inspect(sync_conn).get_table_names()
+    if "cases" in tables:
+        # Client messages live in their own tables, so an existing database only gains two tables.
+        from app.models.outreach import CaseOutreach, OutboundMessage
+
+        for model in (CaseOutreach, OutboundMessage):
+            model.__table__.create(sync_conn, checkfirst=True)
     if "organizations" in tables:
         present = {column["name"] for column in inspect(sync_conn).get_columns("organizations")}
         if "profession" not in present:

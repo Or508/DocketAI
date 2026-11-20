@@ -1,13 +1,13 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import JSON, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import utcnow
 from app.db.base import Base
 from app.domain.enums import ClassificationSource, DocumentStatus
-from app.models.columns import JsonList, new_uuid, sa_enum
+from app.models.columns import JsonList, UtcDateTime, new_uuid, sa_enum
 
 
 class Document(Base):
@@ -52,9 +52,9 @@ class Document(Base):
     display_title: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # Why a classified file did or did not fill slots. Office-facing, no guessed values.
     reading_report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+        UtcDateTime(), default=utcnow, onupdate=utcnow
     )
 
     case: Mapped["Case"] = relationship(back_populates="documents", lazy="raise")

@@ -10,6 +10,7 @@ from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatc
 
 from app.core.config import Settings
 from app.core.exceptions import MfaRequiredError, UnauthorizedError
+from app.core.rate_limit import LOGINS
 from app.core.time import utcnow
 from app.domain.signing_links import as_utc
 from app.models.user import User
@@ -40,22 +41,32 @@ class AuthService:
         self.session = session
         self.settings = settings
 
-    async def login(self, email: str, password: str, code: str | None = None) -> tuple[str, datetime, User]:
+    def _count_failure(self, user: User | None, email: str, ip: str) -> None:
+        """One wrong try: it locks this address out of this account first, the account only much later."""
+        LOGINS.fail(email, ip, self.settings.login_max_failures, self.settings.login_lock_minutes * 60)
+        if user is None:
+            return
+        user.failed_logins = int(user.failed_logins or 0) + 1
+        if user.failed_logins >= self.settings.login_account_max_failures:
+            user.locked_until = utcnow() + timedelta(minutes=self.settings.login_lock_minutes)
+
+    async def login(
+        self, email: str, password: str, code: str | None = None, ip: str = "unknown"
+    ) -> tuple[str, datetime, User]:
         normalized = email.strip().lower()
         # The row lock stops parallel guesses from each counting only one failure.
         user = await self.session.scalar(select(User).where(User.email == normalized).with_for_update())
         # Argon2 is deliberately slow, so it must not run on the event loop.
         if user is None:
             await asyncio.to_thread(verify_password, password, _DUMMY_HASH)
+            self._count_failure(None, normalized, ip)
             raise UnauthorizedError(_LOGIN_ERROR)
         password_ok = await asyncio.to_thread(verify_password, password, user.password_hash)
         locked_until = as_utc(user.locked_until)
-        if locked_until is not None and locked_until > utcnow():
+        if LOGINS.locked(normalized, ip) or (locked_until is not None and locked_until > utcnow()):
             raise UnauthorizedError(_LOGIN_ERROR)
         if not password_ok:
-            user.failed_logins = int(user.failed_logins or 0) + 1
-            if user.failed_logins >= self.settings.login_max_failures:
-                user.locked_until = utcnow() + timedelta(minutes=self.settings.login_lock_minutes)
+            self._count_failure(user, normalized, ip)
             await self.session.commit()
             raise UnauthorizedError(_LOGIN_ERROR)
         if not user.is_active:
@@ -67,13 +78,12 @@ class AuthService:
                 raise MfaRequiredError()
             if not check_second_factor(self.settings, user, code or ""):
                 # A wrong code counts like a wrong password toward the lock.
-                user.failed_logins = int(user.failed_logins or 0) + 1
-                if user.failed_logins >= self.settings.login_max_failures:
-                    user.locked_until = utcnow() + timedelta(minutes=self.settings.login_lock_minutes)
+                self._count_failure(user, normalized, ip)
                 await self.session.commit()
                 raise MfaRequiredError("The code is incorrect or has expired.")
         user.failed_logins = 0
         user.locked_until = None
+        LOGINS.succeed(normalized, ip)
         token = secrets.token_urlsafe(32)
         record = UserSession(
             user_id=user.id,

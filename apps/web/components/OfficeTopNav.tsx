@@ -115,6 +115,12 @@ export function OfficeTopNav() {
 
           {/* Left: search, the office, sign-out. */}
           <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/how-it-works"
+              className="hidden h-9 items-center rounded-md px-2.5 text-sm font-medium text-mist transition-colors hover:bg-ink/5 hover:text-ink lg:inline-flex"
+            >
+              איך זה עובד
+            </Link>
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
@@ -183,6 +189,14 @@ export function OfficeTopNav() {
                   );
                 })}
               </ul>
+              <div className="mt-3 border-t border-line pt-3">
+                <Link
+                  href="/how-it-works"
+                  className="flex h-11 items-center rounded-md px-3 text-sm font-medium text-mist hover:bg-ink/5 hover:text-ink"
+                >
+                  איך זה עובד
+                </Link>
+              </div>
             </nav>
             {office ? (
               <p dir="auto" className="flex items-center gap-2 border-t border-line px-5 py-4 text-sm font-semibold text-tide">

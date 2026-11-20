@@ -36,14 +36,25 @@ class Settings(BaseSettings):
     claude_timeout_seconds: float = Field(default=120.0, gt=0)
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
-    embedding_model: str = "text-embedding-004"
-    embedding_dimensions: int = 768
+    # text-embedding-004 was retired and now answers 404. Vectors from different models never share a collection.
+    embedding_model: str = "gemini-embedding-001"
+    embedding_dimensions: int = Field(default=768, ge=1, le=3072)
     confidence_threshold: float = Field(default=0.75, ge=0, le=1)
     auto_create_schema: bool = True
     log_level: str = "INFO"
     session_ttl_hours: int = 12
+    # Wrong passwords from one address lock that address out of that account only, so a stranger
+    # cannot lock a colleague out. The account itself locks only after many failures from anywhere.
     login_max_failures: int = 5
     login_lock_minutes: int = 15
+    login_account_max_failures: int = Field(default=25, ge=1)
+    # Per-address request limits, kept in this process's memory. Run one API process per limit,
+    # or put a shared limiter in front, when scaling out.
+    rate_limit_enabled: bool = True
+    login_rate_limit: int = Field(default=30, ge=1)
+    login_rate_window_seconds: int = Field(default=900, ge=1)
+    public_rate_limit: int = Field(default=120, ge=1)
+    public_rate_window_seconds: int = Field(default=60, ge=1)
     # Two-step login. Without MFA_SECRET_KEY the server keeps its own key file beside the database.
     mfa_secret_key: str = ""
     mfa_key_path: Path | None = None
@@ -86,8 +97,27 @@ class Settings(BaseSettings):
     clamav_host: str = ""
     clamav_port: int = 3310
     clamav_timeout_seconds: int = 30
+    # Messages to clients. "outbox" writes each email as an .eml file under OUTBOX_DIR instead of sending it,
+    # "smtp" sends it, "disabled" refuses to send email (WhatsApp links still work).
+    email_backend: Literal["disabled", "outbox", "smtp"] = "outbox"
+    outbox_dir: Path | None = None
+    email_from: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_security: Literal["starttls", "ssl", "none"] = "starttls"
+    smtp_timeout_seconds: float = Field(default=20, gt=0)
+    # Reminders go out this many days after the first message, one per entry, until the client acts.
+    reminder_days: str = "2,5"
+    reminder_poll_seconds: int = Field(default=300, ge=10)
+    # Israel time. No reminder is sent outside these hours, or on Saturday.
+    reminder_start_hour: int = Field(default=9, ge=0, le=23)
+    reminder_end_hour: int = Field(default=20, ge=1, le=24)
+    # A cap on emails per case per day, whatever the office clicks.
+    max_messages_per_case_per_day: int = Field(default=10, ge=1)
 
-    @field_validator("storage_dir", "template_dir", "hebrew_font_path", "bl_6101_template_path", "form_101_template_path", "real_estate_template_path", mode="before")
+    @field_validator("storage_dir", "outbox_dir", "template_dir", "hebrew_font_path", "bl_6101_template_path", "form_101_template_path", "real_estate_template_path", mode="before")
     @classmethod
     def blank_path(cls, value: object) -> object:
         if value is None or (isinstance(value, str) and not value.strip()):
@@ -121,6 +151,16 @@ class Settings(BaseSettings):
     @property
     def resolved_mfa_key_path(self) -> Path:
         return self.mfa_key_path or (API_ROOT / "data" / "mfa.key")
+
+    @property
+    def resolved_outbox_dir(self) -> Path:
+        return self.outbox_dir or (API_ROOT / "data" / "outbox")
+
+    @property
+    def reminder_schedule_days(self) -> list[int]:
+        """REMINDER_DAYS as sorted whole days, ignoring blanks and anything that is not a positive number."""
+        days = {int(part) for part in self.reminder_days.split(",") if part.strip().isdigit() and int(part) > 0}
+        return sorted(days)
 
     @property
     def resolved_storage_dir(self) -> Path:

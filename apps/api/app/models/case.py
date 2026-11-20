@@ -1,13 +1,13 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Uuid
+from sqlalchemy import JSON, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import utcnow
 from app.db.base import Base
 from app.domain.enums import CaseStatus
-from app.models.columns import JsonDict, JsonList, new_uuid, sa_enum
+from app.models.columns import JsonDict, JsonList, UtcDateTime, new_uuid, sa_enum
 
 
 class Case(Base):
@@ -38,18 +38,18 @@ class Case(Base):
     signer_verification_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     content_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     file_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    signed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     case_reference: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    data_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    data_completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     content_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     certificate_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     pipeline_stage: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
     pipeline_message: Mapped[str] = mapped_column(String(240), default="", nullable=False)
     pipeline_completed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     pipeline_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+        UtcDateTime(), default=utcnow, onupdate=utcnow
     )
 
     process_definition: Mapped["ProcessDefinition"] = relationship(

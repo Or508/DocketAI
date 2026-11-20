@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Uuid, text
+from sqlalchemy import ForeignKey, Index, Integer, String, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.time import utcnow
 from app.db.base import Base
-from app.models.columns import new_uuid
+from app.models.columns import UtcDateTime, new_uuid
 
 
 class SigningLink(Base):
@@ -28,11 +28,11 @@ class SigningLink(Base):
         index=True,
     )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime())
+    revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     revoke_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    download_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    download_expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     signed_file_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     chat_turns: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

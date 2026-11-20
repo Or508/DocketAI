@@ -56,8 +56,7 @@ export function LoginForm({ nextPath }: { nextPath: string | null }) {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5">
-      <form onSubmit={onSubmit} className="rounded-lg border border-ink/15 bg-white p-6 shadow-card">
+    <form onSubmit={onSubmit} className="rounded-lg border border-ink/15 bg-white p-6 shadow-card">
         <p className="text-sm font-semibold text-tide">ארון תיוק ובקרת מסמכים</p>
         <h1 className="mt-2 font-serif text-3xl">כניסת משרד</h1>
         <label className="mt-5 block text-sm font-semibold" htmlFor="email">
@@ -109,7 +108,6 @@ export function LoginForm({ nextPath }: { nextPath: string | null }) {
         <Button type="submit" className="mt-6 w-full" disabled={busy}>
           {busy ? "נכנסים…" : "כניסה"}
         </Button>
-      </form>
-    </main>
+    </form>
   );
 }

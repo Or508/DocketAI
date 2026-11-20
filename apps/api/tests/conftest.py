@@ -62,6 +62,16 @@ def no_live_ai_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def fresh_rate_limits():
+    """Every test starts with no requests counted and no address locked out."""
+    from app.core.rate_limit import reset
+
+    reset()
+    yield
+    reset()
+
+
+@pytest.fixture(autouse=True)
 def mfa_key_in_tmp(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Tests never create or read the server's real two-step login key."""
     monkeypatch.setenv("MFA_KEY_PATH", str(tmp_path / "mfa.key"))

@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -8,7 +9,14 @@ from app.services.gemini_client import GeminiClient
 
 logger = logging.getLogger(__name__)
 
-_COLLECTION = "docket_labels"
+_COLLECTION_PREFIX = "docket_labels"
+
+
+def collection_name(model: str, dimensions: int) -> str:
+    """One collection per embedding model and size. A vector is only comparable with vectors from its own model,
+    so changing EMBEDDING_MODEL starts a fresh memory instead of searching the old one with new vectors."""
+    slug = re.sub(r"[^a-z0-9]+", "_", model.lower()).strip("_") or "model"
+    return f"{_COLLECTION_PREFIX}__{slug}_{dimensions}"
 
 
 @dataclass(frozen=True)
@@ -26,6 +34,10 @@ class QdrantLearningStore:
         self._gemini = gemini
         self._client = None
         self._disabled = False
+
+    @property
+    def _collection(self) -> str:
+        return collection_name(self._settings.embedding_model, self._settings.embedding_dimensions)
 
     def _enabled(self) -> bool:
         return bool(self._settings.qdrant_url and self._settings.gemini_api_key) and not self._disabled
@@ -96,10 +108,10 @@ class QdrantLearningStore:
         from qdrant_client.http.models import Distance, VectorParams
 
         client = self._qdrant()
-        if client.collection_exists(_COLLECTION):
+        if client.collection_exists(self._collection):
             return
         client.create_collection(
-            collection_name=_COLLECTION,
+            collection_name=self._collection,
             vectors_config=VectorParams(size=size, distance=Distance.COSINE),
         )
 
@@ -111,7 +123,7 @@ class QdrantLearningStore:
             must=[FieldCondition(key="organization_id", match=MatchValue(value=str(organization_id)))]
         )
         response = self._qdrant().query_points(
-            collection_name=_COLLECTION,
+            collection_name=self._collection,
             query=vector,
             limit=limit,
             score_threshold=0.72,
@@ -133,6 +145,6 @@ class QdrantLearningStore:
 
         self._ensure_collection(len(vector))
         self._qdrant().upsert(
-            collection_name=_COLLECTION,
+            collection_name=self._collection,
             points=[PointStruct(id=point_id, vector=vector, payload=payload)],
         )

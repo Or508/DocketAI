@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.deps import current_user
+from app.core.rate_limit import client_ip
 from app.domain.professions import profession as profession_of
 from app.db.session import get_session
 from app.models.organization import Organization
@@ -94,9 +95,11 @@ async def _user_read(session: AsyncSession, user: User) -> UserRead:
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(payload: LoginRequest, session: AsyncSession = Depends(get_session)) -> LoginResponse:
+async def login(
+    payload: LoginRequest, request: Request, session: AsyncSession = Depends(get_session)
+) -> LoginResponse:
     service = AuthService(session, get_settings())
-    token, expires_at, user = await service.login(payload.email, payload.password, payload.code)
+    token, expires_at, user = await service.login(payload.email, payload.password, payload.code, client_ip(request))
     return LoginResponse(token=token, expires_at=expires_at, user=await _user_read(session, user))
 
 

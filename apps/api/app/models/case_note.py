@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid
+from sqlalchemy import ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.time import utcnow
 from app.db.base import Base
-from app.models.columns import new_uuid
+from app.models.columns import UtcDateTime, new_uuid
 
 
 class CaseNote(Base):
@@ -22,4 +22,4 @@ class CaseNote(Base):
     )
     author_email: Mapped[str] = mapped_column(String(320))
     body: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)

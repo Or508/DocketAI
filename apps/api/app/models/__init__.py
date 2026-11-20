@@ -4,6 +4,7 @@ from app.models.case_note import CaseNote
 from app.models.document import Document
 from app.models.intake_link import IntakeLink
 from app.models.organization import Organization
+from app.models.outreach import CaseOutreach, OutboundMessage
 from app.models.process_definition import ProcessDefinition
 from app.models.signing_link import SigningLink
 from app.models.user import User
@@ -13,9 +14,11 @@ __all__ = [
     "AuditLog",
     "Case",
     "CaseNote",
+    "CaseOutreach",
     "Document",
     "IntakeLink",
     "Organization",
+    "OutboundMessage",
     "ProcessDefinition",
     "SigningLink",
     "User",

@@ -17,5 +17,5 @@ export async function GET(request: Request, context: { params: Promise<{ verific
       { status: 422, headers: { "Cache-Control": "no-store" } },
     );
   }
-  return forwardVerify(digest ? `${code}?sha256=${digest}` : code);
+  return forwardVerify(request, digest ? `${code}?sha256=${digest}` : code);
 }

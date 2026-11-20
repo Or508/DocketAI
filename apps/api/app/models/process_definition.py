@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, String, Text, Uuid
+from sqlalchemy import JSON, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import utcnow
 from app.db.base import Base
-from app.models.columns import JsonDict, JsonList, new_uuid
+from app.models.columns import JsonDict, JsonList, UtcDateTime, new_uuid
 
 
 class ProcessDefinition(Base):
@@ -21,9 +21,9 @@ class ProcessDefinition(Base):
     required_fields: Mapped[JsonList] = mapped_column(JSON, default=list)
     template_filename: Mapped[str] = mapped_column(String(255))
     layout: Mapped[JsonDict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+        UtcDateTime(), default=utcnow, onupdate=utcnow
     )
 
     cases: Mapped[list["Case"]] = relationship(back_populates="process_definition", lazy="raise")

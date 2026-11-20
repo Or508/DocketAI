@@ -102,6 +102,58 @@ export interface MfaSetup {
   otpauth_uri: string;
 }
 
+export type OutreachPurpose = "intake" | "signing";
+export type OutreachChannel = "email" | "whatsapp";
+
+export interface OutreachMessage {
+  id: string;
+  purpose: OutreachPurpose;
+  kind: "first" | "reminder";
+  channel: OutreachChannel;
+  recipient: string;
+  status: "sent" | "failed" | "handed_to_office";
+  error: string | null;
+  created_at: string;
+}
+
+export interface OutreachSent {
+  message: OutreachMessage;
+  url: string;
+  whatsapp_url: string | null;
+  next_reminder_at: string | null;
+}
+
+export interface OutreachState {
+  email: string | null;
+  phone: string | null;
+  phone_display: string | null;
+  purpose: OutreachPurpose | null;
+  channel: OutreachChannel | null;
+  reminders_enabled: boolean;
+  reminders_sent: number;
+  next_reminder_at: string | null;
+  stopped_reason: string | null;
+  email_available: boolean;
+  messages: OutreachMessage[];
+}
+
+export interface DueReminder {
+  case_id: string;
+  case_name: string;
+  client_name: string | null;
+  purpose: OutreachPurpose;
+  phone_display: string;
+  due_at: string;
+}
+
+export interface OutreachSendBody {
+  purpose: OutreachPurpose;
+  channel: OutreachChannel;
+  email?: string;
+  phone?: string;
+  reminders: boolean;
+}
+
 export const api = {
   me: () => request<OfficeProfile>("/auth/me"),
   organization: () => request<OrganizationProfile>("/organization"),
@@ -174,6 +226,16 @@ export const api = {
   loadDefaultForm: (caseId: string) => request<CaseWorkspace>(`/cases/${caseId}/load-default-form`, { method: "POST" }),
   timeline: (caseId: string) => request<unknown>(`/cases/${caseId}/timeline`),
   intake: (caseId: string) => request<IntakeSummary>(`/cases/${caseId}/intake`),
+  outreach: (caseId: string) => request<OutreachState>(`/cases/${caseId}/outreach`),
+  sendOutreach: (caseId: string, body: OutreachSendBody) =>
+    request<OutreachSent>(`/cases/${caseId}/outreach/send`, { method: "POST", body: JSON.stringify(body) }),
+  setOutreachReminders: (caseId: string, enabled: boolean) =>
+    request<OutreachState>(`/cases/${caseId}/outreach/reminders`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+  remindOutreach: (caseId: string) => request<OutreachSent>(`/cases/${caseId}/outreach/remind`, { method: "POST" }),
+  dueOutreach: () => request<DueReminder[]>("/outreach/due"),
   fillReport: (caseId: string, documentId: string) =>
     request<FillReport>(`/cases/${caseId}/documents/${documentId}/fill-report`),
   setDocumentRole: (caseId: string, documentId: string, role: "evidence" | "form", displayTitle?: string) =>

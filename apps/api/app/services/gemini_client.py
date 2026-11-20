@@ -167,9 +167,13 @@ class GoogleGeminiClient:
         return await asyncio.to_thread(self._embed_sync, text)
 
     def _embed_sync(self, text: str) -> list[float]:
+        from google.genai import types
+
+        # The model may return more dimensions than the label store was built for; ask for exactly that many.
         response = self._client().models.embed_content(
             model=self._settings.embedding_model,
             contents=text[:8_000],
+            config=types.EmbedContentConfig(output_dimensionality=self._settings.embedding_dimensions),
         )
         embeddings = getattr(response, "embeddings", None) or []
         if not embeddings:

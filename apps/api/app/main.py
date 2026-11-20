@@ -13,6 +13,7 @@ from app.catalog.processes import PROCESSES
 from app.core.config import get_settings
 from app.core.container import build_container
 from app.core.exceptions import AppError
+from app.core.rate_limit import check_request
 from app.db.base import Base
 from app.db.compat import ensure_case_columns, ensure_default_organization
 from app.db.session import get_engine, session_scope
@@ -53,6 +54,23 @@ async def _resume_unread(container) -> None:
         logger.exception("Could not resume unread files")
 
 
+async def _reminder_loop(container, every_seconds: int) -> None:
+    """Email reminders that are due go out every few minutes. Each one is claimed first, so two processes never
+    send the same reminder twice."""
+    from app.workers.runner import send_due_reminders
+
+    while True:
+        await asyncio.sleep(every_seconds)
+        try:
+            sent = await send_due_reminders(container)
+            if sent:
+                logger.info("Sent %s client reminders", sent)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("The reminder round failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -75,7 +93,9 @@ async def lifespan(app: FastAPI):
     if not settings.queue_enabled:
         # In-process work is lost when the API stops. Pick up what it left unread.
         resume = asyncio.create_task(_resume_unread(container))
+    reminders = asyncio.create_task(_reminder_loop(container, settings.reminder_poll_seconds))
     yield
+    reminders.cancel()
     if resume is not None and not resume.done():
         resume.cancel()
 
@@ -86,6 +106,29 @@ app = FastAPI(
     summary="Document ingestion, gap analysis, conversational form fill, and signing.",
     lifespan=lifespan,
 )
+
+class RateLimitMiddleware:
+    """Plain ASGI, so the portal's event streams pass through untouched."""
+
+    def __init__(self, inner) -> None:
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] == "http":
+            wait = check_request(Request(scope), get_settings())
+            if wait is not None:
+                response = JSONResponse(
+                    status_code=429,
+                    content={"detail": "Too many requests. Try again shortly.", "code": "rate_limited"},
+                    headers={"Retry-After": str(int(wait)), "Cache-Control": "no-store"},
+                )
+                await response(scope, receive, send)
+                return
+        await self.inner(scope, receive, send)
+
+
+app.add_middleware(RateLimitMiddleware)
+
 
 @app.exception_handler(AppError)
 async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:

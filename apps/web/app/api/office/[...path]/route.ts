@@ -41,7 +41,9 @@ function allowed(segments: string[]): boolean {
     joined === "auth/mfa/recovery-codes" ||
     joined === "organization" ||
     joined === "organization/profession" ||
-    joined === "organization/ai-reading"
+    joined === "organization/ai-reading" ||
+    // WhatsApp reminders that are due, for the office to send by hand.
+    joined === "outreach/due"
   ) {
     return true;
   }

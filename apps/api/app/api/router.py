@@ -9,6 +9,7 @@ from app.api.routes import (
     health,
     intake,
     organization,
+    outreach,
     portal,
     processes,
     signing_links,
@@ -29,6 +30,7 @@ api_router.include_router(clients.router, dependencies=_office)
 api_router.include_router(audit.router, dependencies=_office)
 api_router.include_router(organization.router, dependencies=_office)
 api_router.include_router(signing_links.router, dependencies=_office)
+api_router.include_router(outreach.router, dependencies=_office)
 api_router.include_router(portal.router)
 api_router.include_router(intake.router)
 api_router.include_router(verify.router)

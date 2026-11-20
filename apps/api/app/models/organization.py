@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, Uuid
+from sqlalchemy import Boolean, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.time import utcnow
 from app.db.base import Base
-from app.models.columns import new_uuid
+from app.models.columns import UtcDateTime, new_uuid
 
 
 class Organization(Base):
@@ -18,4 +18,4 @@ class Organization(Base):
     profession: Mapped[str] = mapped_column(String(40), default="law", server_default="law", nullable=False)
     # Off: no document, page, or chat message of this office is sent to an AI model (ai_policy.py).
     ai_reading_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)

@@ -1,3 +1,5 @@
+import { clientIpHeaders } from "@/lib/server/client-ip";
+
 const NO_STORE = { "Cache-Control": "no-store" };
 
 export function notFound(): Response {
@@ -5,10 +7,10 @@ export function notFound(): Response {
 }
 
 /** Pass a public verification lookup to the API. `path` is already validated by the caller. */
-export async function forwardVerify(path: string): Promise<Response> {
+export async function forwardVerify(request: Request, path: string): Promise<Response> {
   const base = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8000";
   try {
-    const upstream = await fetch(`${base}/verify/${path}`, { cache: "no-store" });
+    const upstream = await fetch(`${base}/verify/${path}`, { cache: "no-store", headers: clientIpHeaders(request) });
     const body = await upstream.text();
     return new Response(body, {
       status: upstream.status,

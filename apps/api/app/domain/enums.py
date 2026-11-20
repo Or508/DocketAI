@@ -43,3 +43,5 @@ class AuditAction(str, Enum):
     CLIENT_INTAKE_UPLOADED = "client_intake_uploaded"
     INTERNAL_NOTE_ADDED = "internal_note_added"
     CLIENT_DOCUMENT_UPLOADED = "client_document_uploaded"
+    CLIENT_MESSAGE_SENT = "client_message_sent"
+    REMINDERS_CHANGED = "reminders_changed"

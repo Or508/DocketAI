@@ -6,18 +6,25 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Download, FolderOpen, PenLine, Plus, Search, Trash2 } from "lucide-react";
 
+import { WHATSAPP_FALLBACK, WhatsAppOpenLink } from "@/components/client-outreach";
 import { StatusPill } from "@/components/status-pill";
 import { WhatsAppReminder } from "@/components/whatsapp-reminder";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { OfficeTopNav } from "@/components/OfficeTopNav";
-import { ApiError, api, detailFrom, downloadCaseArchive } from "@/lib/api";
+import { ApiError, api, detailFrom, downloadCaseArchive, type DueReminder } from "@/lib/api";
 import { archiveFilename } from "@/lib/dispatch";
 import { caseOpeners, clientPlural, dispatchFormTitle, folderFromWorkspace, processLabel, sameProcessGroup, type CaseOpener, type FolderTone } from "@/lib/filing";
 import { hebrewOfficeError } from "@/lib/hebrew";
 import { readOfficeSettings } from "@/lib/office-settings";
 import { formatWhen } from "@/lib/utils";
+
+const DEMO_DOCUMENTS = [
+  { path: "/demo/01-teudat-zehut.pdf", filename: "01-teudat-zehut.pdf", type: "id_copy" },
+  { path: "/demo/02-arnona.pdf", filename: "02-arnona.pdf", type: "proof_of_address" },
+  { path: "/demo/03-ishur-bank.pdf", filename: "03-ishur-bank.pdf", type: "bank_confirmation" },
+] as const;
 
 type Bucket = "all" | "preparing" | "awaiting" | "done";
 
@@ -62,6 +69,7 @@ export function Dashboard() {
   const [clientTerm, setClientTerm] = useState("לקוח");
   const [selected, setSelected] = useState<string[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,6 +222,35 @@ export function Dashboard() {
     setActingId(null);
   }
 
+  async function openDemoCase() {
+    setDemoBusy(true);
+    setActionError(null);
+    try {
+      const created = await api.createCase({
+        name: "טופס 101 — דוגמה",
+        process_key: "employee_onboarding",
+        client_name: "דנה כהן (דוגמה)",
+      });
+      await api.loadDefaultForm(created.id);
+      const files = await Promise.all(
+        DEMO_DOCUMENTS.map(async (document) => {
+          const response = await fetch(document.path);
+          if (!response.ok) throw new Error("פתיחת תיק הדוגמה נכשלה. נסו שוב.");
+          const blob = await response.blob();
+          return new File([blob], document.filename, { type: blob.type || "application/pdf" });
+        }),
+      );
+      for (const [index, item] of DEMO_DOCUMENTS.entries()) {
+        const uploaded = await api.upload(created.id, [files[index]], { documentType: item.type });
+        if (uploaded.rejected.length) throw new Error("פתיחת תיק הדוגמה נכשלה. נסו שוב.");
+      }
+      router.push(`/cases/${created.id}`);
+    } catch (reason) {
+      setActionError(reason instanceof ApiError ? hebrewOfficeError(reason) : "פתיחת תיק הדוגמה נכשלה. נסו שוב.");
+      setDemoBusy(false);
+    }
+  }
+
   function toggleSelected(id: string) {
     setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
   }
@@ -247,12 +284,18 @@ export function Dashboard() {
             <Plus aria-hidden className="h-4 w-4" />
             פתיחת תיק חדש
           </Button>
+          <Button type="button" variant="outline" disabled={demoBusy} onClick={() => void openDemoCase()}>
+            <FolderOpen aria-hidden className="h-4 w-4" />
+            {demoBusy ? "פותח תיק לדוגמה…" : "תיק לדוגמה"}
+          </Button>
           <Button type="button" variant="outline" disabled={exporting} onClick={() => void exportCsv()}>
             <Download aria-hidden className="h-4 w-4" />
             {exporting ? "מייצא…" : "ייצוא לאקסל"}
           </Button>
         </div>
       </header>
+
+      <DueWhatsAppReminders />
 
       <section className="mt-8 overflow-hidden rounded-lg border border-line bg-white shadow-card" aria-label="רשימת התיקים">
         <div className="border-b border-line p-4">
@@ -334,6 +377,104 @@ export function Dashboard() {
         onCreated={(id) => router.push(`/cases/${id}`)}
       />
     </main>
+  );
+}
+
+const DUE_PURPOSE: Record<DueReminder["purpose"], string> = {
+  intake: "בקשת מסמכים",
+  signing: "טופס לחתימה",
+};
+
+function DueWhatsAppReminders() {
+  const [items, setItems] = useState<DueReminder[] | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshNote, setRefreshNote] = useState<string | null>(null);
+  const [held, setHeld] = useState<{ caseName: string; url: string } | null>(null);
+
+  async function load() {
+    setItems(await api.dueOutreach());
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .dueOutreach()
+      .then((next) => {
+        if (!cancelled) setItems(next);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(reason instanceof ApiError ? reason.message : "לא ניתן לטעון את התזכורות.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function send(item: DueReminder) {
+    setBusyId(item.case_id);
+    setError(null);
+    setRefreshNote(null);
+    try {
+      const sent = await api.remindOutreach(item.case_id);
+      if (sent.whatsapp_url) {
+        window.open(sent.whatsapp_url, "_blank", "noopener,noreferrer");
+        setHeld({ caseName: item.case_name, url: sent.whatsapp_url });
+      }
+      try {
+        await load();
+      } catch {
+        setRefreshNote("התזכורת נשלחה, אבל הרשימה לא התעדכנה.");
+      }
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "השליחה נכשלה.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (!items?.length && !error && !refreshNote && !held) return null;
+
+  return (
+    <section className="mt-6 rounded-lg border border-line bg-white px-4 py-4 shadow-card" aria-label="תזכורות לשליחה בוואטסאפ">
+      <h2 className="text-sm font-semibold text-ink">תזכורות לשליחה בוואטסאפ ({items?.length ?? 0})</h2>
+      {held ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink">
+          <p>
+            {held.caseName}: {WHATSAPP_FALLBACK}
+          </p>
+          <WhatsAppOpenLink href={held.url} />
+          <Button type="button" size="sm" variant="ghost" onClick={() => setHeld(null)}>
+            סגירה
+          </Button>
+        </div>
+      ) : null}
+      {refreshNote ? <p className="mt-2 text-sm font-medium text-ink">{refreshNote}</p> : null}
+      {error ? (
+        <p className="mt-2 text-sm font-medium text-clay" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {items && items.length > 0 ? (
+        <ul className="mt-3 divide-y divide-line">
+          {items.map((item) => (
+            <li key={item.case_id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <a href={`/cases/${item.case_id}`} className="min-w-0">
+                <span className="block truncate font-semibold text-ink">{item.case_name}</span>
+                <span className="mt-0.5 block truncate text-sm text-mist">
+                  {item.client_name ? <span>{item.client_name} · </span> : null}
+                  <span dir="ltr">{item.phone_display}</span>
+                  {` · ${DUE_PURPOSE[item.purpose]}`}
+                </span>
+              </a>
+              <Button type="button" size="sm" disabled={busyId !== null} onClick={() => void send(item)}>
+                {busyId === item.case_id ? "שולח…" : "לשלוח תזכורת עכשיו"}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 

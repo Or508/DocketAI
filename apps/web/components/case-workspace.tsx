@@ -24,6 +24,7 @@ import { OfficeTopNav } from "@/components/OfficeTopNav";
 import { ReadinessShield } from "@/components/readiness-shield";
 import { CASE_PRINT_CSS, CaseCover } from "@/components/case-cover";
 import { DocumentRequest } from "@/components/document-request";
+import { OutreachStatus, SendToClientButton } from "@/components/client-outreach";
 import { ApiError, api, downloadCaseArchive, filledFormUrl, signedDocumentUrl } from "@/lib/api";
 import { archiveFilename } from "@/lib/dispatch";
 import { FIELD_LABEL, blankFormNotice, dispatchFormTitle, folderFromWorkspace, formDrawerTitle, processLabel, processTypeOf } from "@/lib/filing";
@@ -44,6 +45,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
   const [watch, setWatch] = useState(false);
   const [slotErrors, setSlotErrors] = useState<Record<string, string>>({});
   const [pendingSlots, setPendingSlots] = useState<string[]>([]);
+  const [outreachTick, setOutreachTick] = useState(0);
   const claimsRef = useRef<DrawerClaim[]>([]);
   const claiming = useRef(false);
   const uploadQueue = useRef(Promise.resolve());
@@ -458,6 +460,13 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
               loadingForm={loadingForm}
               onLoadBlank={workspace.case.status !== "signed" ? loadBlankForm : undefined}
             />
+            <div className="mt-4 border-t border-ink/10 pt-4">
+              <SendToClientButton
+                caseId={caseId}
+                readyToSign={workspace.ready_to_sign}
+                onSent={() => setOutreachTick((value) => value + 1)}
+              />
+            </div>
             <SignerLinkCard
               embedded
               caseId={caseId}
@@ -551,6 +560,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
       </div>
       <div className="mt-5 grid gap-5">
         <InternalNotes caseId={caseId} />
+        <OutreachStatus caseId={caseId} refreshKey={outreachTick} />
         <ActivityTimeline caseId={caseId} />
         <ReadingPanel workspace={workspace} />
       </div>

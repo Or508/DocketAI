@@ -101,6 +101,15 @@ def test_another_organization_gets_404_and_changes_nothing(client: TestClient, t
         ("POST", f"/cases/{case_id}/signing-links", None, None),
         ("GET", f"/cases/{case_id}/signing-link", None, None),
         ("DELETE", f"/cases/{case_id}/signing-link", None, None),
+        (
+            "POST",
+            f"/cases/{case_id}/outreach/send",
+            {"purpose": "intake", "channel": "email", "email": "client@example.com"},
+            None,
+        ),
+        ("GET", f"/cases/{case_id}/outreach", None, None),
+        ("PUT", f"/cases/{case_id}/outreach/reminders", {"enabled": False}, None),
+        ("POST", f"/cases/{case_id}/outreach/remind", None, None),
     ]
     for method, path, payload, files in calls:
         response = client.request(method, path, json=payload, files=files, headers=headers)
@@ -256,7 +265,9 @@ def test_learning_search_requires_the_organization_filter() -> None:
             self.kwargs = kwargs
             return type("Result", (), {"points": [Point(str(ours)), Point(str(uuid4())), Point(None)]})()
 
-    store = QdrantLearningStore(SimpleNamespace(), None)  # type: ignore[arg-type]
+    # The store names its collection after the embedding model, so the stub carries those two settings.
+    settings = SimpleNamespace(embedding_model="gemini-embedding-001", embedding_dimensions=2)
+    store = QdrantLearningStore(settings, None)  # type: ignore[arg-type]
     stub = Stub()
     store._client = stub
     found = store._search([0.1, 0.2], 3, ours)

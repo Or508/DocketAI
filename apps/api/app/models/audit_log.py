@@ -1,13 +1,13 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, Uuid
+from sqlalchemy import JSON, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.time import utcnow
 from app.db.base import Base
 from app.domain.enums import AuditAction
-from app.models.columns import JsonDict, new_uuid, sa_enum
+from app.models.columns import JsonDict, UtcDateTime, new_uuid, sa_enum
 
 
 class AuditLog(Base):
@@ -31,4 +31,4 @@ class AuditLog(Base):
     new_value: Mapped[JsonDict | None] = mapped_column(JSON, nullable=True)
     embedding_point_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)

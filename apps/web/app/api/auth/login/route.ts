@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { clientIpHeaders } from "@/lib/server/client-ip";
 import { OFFICE_COOKIE, officeCookieOptions, sameOrigin } from "@/lib/server/office-session";
 
 export const runtime = "nodejs";
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
   try {
     const upstream = await fetch(`${base}/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: clientIpHeaders(request, { "Content-Type": "application/json" }),
       body: await request.text(),
       cache: "no-store",
     });

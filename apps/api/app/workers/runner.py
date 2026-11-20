@@ -16,3 +16,11 @@ async def process_case_job(case_id: UUID, container: Container) -> None:
             await service.run_ingestion(case_id)
     except Exception:
         logger.exception("Ingestion failed for case %s", case_id)
+
+
+async def send_due_reminders(container: Container) -> int:
+    """One round of client email reminders across every office. Each reminder is claimed before it is sent."""
+    from app.services.outreach_service import OutreachService
+
+    async with session_scope() as session:
+        return await OutreachService(session, container, CaseScope.system()).send_due_emails()
