@@ -505,7 +505,7 @@ export function CaseWorkspaceView({ caseId }: { caseId: string }) {
               ) : null}
               {workspace.case.download_ready ? (
                 <div className="mt-4 space-y-3">
-                  <SignedChecklist />
+                  <SignedChecklist fields={workspace.process.required_fields} />
                   <a className="block text-sm font-semibold text-tide underline" href={signedDocumentUrl(caseId)}>
                     הורדת הטופס החתום
                   </a>

@@ -107,10 +107,18 @@ class LoginThrottle:
 
 REQUESTS = SlidingWindow()
 LOGINS = LoginThrottle()
+# A visitor may open only a few demo offices per day, on top of the login window above.
+DEMO_STARTS = SlidingWindow()
+
+
+def allow_demo_start(ip: str, limit: int) -> bool:
+    """True when this address may open another demo office today."""
+    return DEMO_STARTS.hit(f"demo:{ip}", limit, 86_400) is None
 
 
 def _bucket(method: str, path: str) -> str | None:
-    if method == "POST" and path == "/auth/login":
+    if method == "POST" and (path == "/auth/login" or path == "/demo/start" or path.startswith("/account/")):
+        # Invitations, password resets, and demo starts are guessed at like logins, so they share that limit.
         return "login"
     if path == "/portal" or path.startswith(("/portal/", "/intake/", "/verify/")):
         return "public"
@@ -135,3 +143,4 @@ def check_request(request: Request, settings) -> float | None:
 def reset() -> None:
     REQUESTS.clear()
     LOGINS.clear()
+    DEMO_STARTS.clear()

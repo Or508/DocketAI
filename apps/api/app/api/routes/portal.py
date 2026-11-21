@@ -37,7 +37,7 @@ async def portal_view(
     service: PortalService = Depends(get_portal_service),
 ) -> PortalView:
     link, case = await service.resolve(token)
-    return service.view(link, case)
+    return await service.present(link, case)
 
 
 @router.get("/preview")
@@ -59,7 +59,7 @@ async def portal_fields(
     stored = await service.cases._get_case(case.id)
     current = await service.session.get(SigningLink, link.id)
     assert current is not None
-    return service.view(current, stored)
+    return await service.present(current, stored)
 
 
 @router.post("/documents", response_model=PortalView)
@@ -75,7 +75,7 @@ async def portal_documents(
     stored = await service.cases._get_case(case_id)
     current = await service.session.get(SigningLink, link_id)
     assert current is not None
-    return service.view(current, stored)
+    return await service.present(current, stored)
 
 
 @router.post("/chat/stream")
@@ -93,7 +93,7 @@ async def portal_chat(
         if current is None:
             raise ConflictError("This link is no longer active.")
         stored = await case_service._get_case(case_id)
-        return PortalService(case_service.session, container, service.scope).view(current, stored)
+        return await PortalService(case_service.session, container, service.scope).present(current, stored)
 
     return StreamingResponse(
         iter_chat_stream(
@@ -126,7 +126,7 @@ async def portal_sign(
     stored_link = await service.session.get(SigningLink, link.id)
     stored_case = await service.cases._get_case(case.id)
     assert stored_link is not None
-    return service.view(stored_link, stored_case)
+    return await service.present(stored_link, stored_case)
 
 
 @router.get("/signed-document")

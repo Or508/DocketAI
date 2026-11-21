@@ -462,7 +462,9 @@ def test_storage_boundaries_stay_where_the_spec_puts_them() -> None:
             storage_dir_files.append(path.resolve())
         if path.name == "case_service.py":
             assert ".unlink(" not in source
-    assert boto_files == [root / "services" / "object_store.py"]
+    # Files are reached only through object_store.py. email_sender.py uses boto3 for SES email, never for S3.
+    assert sorted(boto_files) == [root / "services" / "email_sender.py", root / "services" / "object_store.py"]
+    assert '"s3"' not in (root / "services" / "email_sender.py").read_text(encoding="utf-8")
     allowed = {
         (root / "core" / "config.py").resolve(),
         (root / "main.py").resolve(),

@@ -57,6 +57,8 @@ class UserRead(BaseModel):
     id: UUID
     email: str
     display_name: str
+    # "owner" manages people and office settings; "staff" works on cases.
+    role: str
     organization_id: UUID
     organization_name: str
     # The office's profession and the words its screens use.
@@ -64,6 +66,8 @@ class UserRead(BaseModel):
     profession_label_he: str
     client_term_he: str
     case_term_he: str
+    # When the office is a public demo, the moment it is deleted. Null for a real office.
+    demo_expires_at: datetime | None = None
 
 
 class LoginResponse(BaseModel):
@@ -85,12 +89,14 @@ async def _user_read(session: AsyncSession, user: User) -> UserRead:
         id=user.id,
         email=user.email,
         display_name=user.display_name,
+        role=user.role,
         organization_id=user.organization_id,
         organization_name=organization.name if organization is not None else "",
         profession=kind.key,
         profession_label_he=kind.label_he,
         client_term_he=kind.client_he,
         case_term_he=kind.case_he,
+        demo_expires_at=organization.demo_expires_at if organization is not None else None,
     )
 
 

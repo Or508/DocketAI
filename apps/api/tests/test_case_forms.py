@@ -538,7 +538,7 @@ def test_case_form_migration_goes_up_down_and_up(tmp_path: Path) -> None:
     assert columns["display_title"][3] == 0
     assert "reading_report" in columns
     current = _alembic(database, "current")
-    assert "20261111_0009" in current
+    assert "(head)" in current
 
     _alembic(database, "downgrade", "20261110_0007")
     downgraded = _document_columns(database)
@@ -548,4 +548,4 @@ def test_case_form_migration_goes_up_down_and_up(tmp_path: Path) -> None:
     _alembic(database, "upgrade", "head")
     restored = _document_columns(database)
     assert "role" in restored and "display_title" in restored and "reading_report" in restored
-    assert "20261111_0009" in _alembic(database, "current")
+    assert "(head)" in _alembic(database, "current")

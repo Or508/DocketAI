@@ -131,6 +131,14 @@ class PortalService:
             raise GoneError(_GONE)
         return link, case
 
+    async def present(self, link: SigningLink, case: Case) -> PortalView:
+        """The signer's view, with the office that sent the link."""
+        from app.services.office_contact import office_contact
+
+        view = self.view(link, case)
+        view.office = await office_contact(self.session, case.organization_id)
+        return view
+
     def view(self, link: SigningLink, case: Case) -> PortalView:
         state = link_state(link, case, utcnow())
         if state == "unavailable":

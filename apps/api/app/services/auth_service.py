@@ -84,6 +84,11 @@ class AuthService:
         user.failed_logins = 0
         user.locked_until = None
         LOGINS.succeed(normalized, ip)
+        token, expires_at = await self.issue_session(user)
+        return token, expires_at, user
+
+    async def issue_session(self, user: User) -> tuple[str, datetime]:
+        """A signed-in session for a user who is already allowed in. Login and the public demo both use it."""
         token = secrets.token_urlsafe(32)
         record = UserSession(
             user_id=user.id,
@@ -93,7 +98,7 @@ class AuthService:
         )
         self.session.add(record)
         await self.session.commit()
-        return token, record.expires_at, user
+        return token, record.expires_at
 
     async def resolve_session(self, token: str) -> User:
         record = await self.session.scalar(

@@ -5,6 +5,7 @@ so the office's document reader fills the form from these files exactly as from 
 
     python scripts/demo_documents.py            # writes apps/web/public/demo/*.pdf
     python scripts/demo_documents.py OUT_DIR
+    python scripts/demo_documents.py --api      # writes every sample, the deal's too, to app/assets/demo (the public demo seeds from there)
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import pymupdf
 API_ROOT = Path(__file__).resolve().parents[1]
 FONT = API_ROOT / "app" / "assets" / "fonts" / "Rubik-Regular.ttf"
 DEFAULT_OUT = API_ROOT.parent / "web" / "public" / "demo"
+API_OUT = API_ROOT / "app" / "assets" / "demo"
 
 # One invented employee. 100000009 passes the Israeli ID checksum and belongs to no one.
 PERSON = {
@@ -96,6 +98,70 @@ SAMPLES = [
 ]
 
 
+# The real estate deal the public demo opens for the same invented person: she buys an apartment.
+DEAL = {
+    "buyer_name": f"{PERSON['first_name']} {PERSON['last_name']}",
+    "seller_name": "יוסף מזרחי",
+    "property_address_he": "רחוב הנביאים 40, ירושלים",
+    "parcel_number": "גוש 30040 חלקה 112",
+    "price": "2,450,000",
+    "contract_date": "15/12/2026",
+}
+
+DEAL_SAMPLES = [
+    Sample(
+        filename="04-hozeh-mecher.pdf",
+        title="הסכם מכר דירה",
+        issuer="טיוטה לחתימה · דוגמה",
+        rows=[
+            ("המוכר:", DEAL["seller_name"]),
+            ("הקונה:", DEAL["buyer_name"]),
+            ("הנכס:", DEAL["property_address_he"]),
+            ("גוש וחלקה:", DEAL["parcel_number"]),
+            ("התמורה:", f"₪ {DEAL['price']}"),
+            ("מועד החתימה:", DEAL["contract_date"]),
+        ],
+        note="הסכם המכר שבתיק.",
+    ),
+    Sample(
+        filename="05-nesach-tabu.pdf",
+        title="נסח רישום מקרקעין",
+        issuer="לשכת רישום המקרקעין · דוגמה",
+        rows=[
+            ("גוש וחלקה:", DEAL["parcel_number"]),
+            ("כתובת:", DEAL["property_address_he"]),
+            ("בעלים רשום:", DEAL["seller_name"]),
+            ("חלק בנכס:", "בשלמות"),
+            ("הערות:", "אין שעבודים רשומים"),
+        ],
+        note="מי הבעלים הרשום ואילו הערות רשומות על הנכס.",
+    ),
+    Sample(
+        filename="06-ishur-misim.pdf",
+        title="אישור מיסוי מקרקעין",
+        issuer="רשות המסים · דוגמה",
+        rows=[
+            ("המוכר:", DEAL["seller_name"]),
+            ("הקונה:", DEAL["buyer_name"]),
+            ("גוש וחלקה:", DEAL["parcel_number"]),
+            ("מס שבח:", "שולם במלואו"),
+            ("מס רכישה:", "שולם במלואו"),
+        ],
+        note="אישור שהמיסים על העסקה שולמו.",
+    ),
+]
+
+# The document type of each sample, for seeding a case drawer by drawer.
+TYPES = {
+    "01-teudat-zehut.pdf": "id_copy",
+    "02-arnona.pdf": "proof_of_address",
+    "03-ishur-bank.pdf": "bank_confirmation",
+    "04-hozeh-mecher.pdf": "purchase_agreement",
+    "05-nesach-tabu.pdf": "title_deed",
+    "06-ishur-misim.pdf": "tax_clearance",
+}
+
+
 def _html(sample: Sample) -> str:
     # One line per detail, label then value, the way the office's reader expects a printed form.
     rows = "".join(f"<p class='row'><span class='k'>{key}</span> {value}</p>" for key, value in sample.rows)
@@ -120,12 +186,15 @@ def build(sample: Sample) -> bytes:
     return data
 
 
-def main(out: Path) -> None:
+def main(out: Path, samples: list[Sample] = SAMPLES) -> None:
     out.mkdir(parents=True, exist_ok=True)
-    for sample in SAMPLES:
+    for sample in samples:
         (out / sample.filename).write_bytes(build(sample))
         print(out / sample.filename)
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_OUT)
+    if sys.argv[1:] == ["--api"]:
+        main(API_OUT, SAMPLES + DEAL_SAMPLES)
+    else:
+        main(Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_OUT)

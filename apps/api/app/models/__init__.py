@@ -1,3 +1,4 @@
+from app.models.account_token import AccountToken
 from app.models.audit_log import AuditLog
 from app.models.case import Case
 from app.models.case_note import CaseNote
@@ -11,6 +12,7 @@ from app.models.user import User
 from app.models.user_session import UserSession
 
 __all__ = [
+    "AccountToken",
     "AuditLog",
     "Case",
     "CaseNote",

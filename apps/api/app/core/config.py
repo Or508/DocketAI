@@ -16,6 +16,16 @@ def _normalize_database_url(url: str) -> str:
     return url
 
 
+def _is_fernet_key(key: str) -> bool:
+    import base64
+    import binascii
+
+    try:
+        return len(base64.urlsafe_b64decode(key.encode("ascii"))) == 32
+    except (ValueError, binascii.Error):
+        return False
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(str(REPO_ROOT / ".env"), str(API_ROOT / ".env")),
@@ -40,9 +50,14 @@ class Settings(BaseSettings):
     embedding_model: str = "gemini-embedding-001"
     embedding_dimensions: int = Field(default=768, ge=1, le=3072)
     confidence_threshold: float = Field(default=0.75, ge=0, le=1)
+    # "production" refuses to start with a development default that would lose or leak data (see production_problems).
+    environment: Literal["development", "production"] = "development"
     auto_create_schema: bool = True
     log_level: str = "INFO"
     session_ttl_hours: int = 12
+    # A colleague's invitation link, and a "forgot my password" link.
+    invite_link_ttl_hours: int = Field(default=72, ge=1)
+    password_reset_minutes: int = Field(default=60, ge=5)
     # Wrong passwords from one address lock that address out of that account only, so a stranger
     # cannot lock a colleague out. The account itself locks only after many failures from anywhere.
     login_max_failures: int = 5
@@ -98,8 +113,12 @@ class Settings(BaseSettings):
     clamav_port: int = 3310
     clamav_timeout_seconds: int = 30
     # Messages to clients. "outbox" writes each email as an .eml file under OUTBOX_DIR instead of sending it,
-    # "smtp" sends it, "disabled" refuses to send email (WhatsApp links still work).
-    email_backend: Literal["disabled", "outbox", "smtp"] = "outbox"
+    # "smtp" sends it, "ses" sends it through the Amazon SES API (Tel Aviv has no SES SMTP endpoint),
+    # "disabled" refuses to send email (WhatsApp links still work).
+    email_backend: Literal["disabled", "outbox", "smtp", "ses"] = "outbox"
+    # Blank: the default AWS credential chain (the server's IAM role) and S3_REGION.
+    ses_region: str = ""
+    ses_configuration_set: str = ""
     outbox_dir: Path | None = None
     email_from: str = ""
     smtp_host: str = ""
@@ -116,6 +135,11 @@ class Settings(BaseSettings):
     reminder_end_hour: int = Field(default=20, ge=1, le=24)
     # A cap on emails per case per day, whatever the office clicks.
     max_messages_per_case_per_day: int = Field(default=10, ge=1)
+    # A public showcase. Off for a real office: /demo/start answers 404, and nothing here relaxes production_problems().
+    demo_mode: bool = False
+    demo_ttl_hours: int = Field(default=24, ge=1)
+    demo_starts_per_ip_per_day: int = Field(default=5, ge=1)
+    demo_whatsapp: str = "972547302757"
 
     @field_validator("storage_dir", "outbox_dir", "template_dir", "hebrew_font_path", "bl_6101_template_path", "form_101_template_path", "real_estate_template_path", mode="before")
     @classmethod
@@ -128,9 +152,13 @@ class Settings(BaseSettings):
     def normalize(self) -> Self:
         self.database_url = _normalize_database_url(self.database_url)
         self.qdrant_url = self.qdrant_url.strip()
+        if self.qdrant_url.lower() in {"off", "none", "disabled"}:
+            # Hosts that cannot hold an empty value (Render) switch label memory off with a word.
+            self.qdrant_url = ""
         self.gemini_api_key = self.gemini_api_key.strip()
         self.anthropic_api_key = self.anthropic_api_key.strip()
-        self.mfa_secret_key = self.mfa_secret_key.strip()
+        # The same 32 bytes in either base64 spelling: Render's generated values use + and /, Fernet wants - and _.
+        self.mfa_secret_key = self.mfa_secret_key.strip().replace("+", "-").replace("/", "_")
         self.claude_model = self.claude_model.strip()
         self.s3_bucket = self.s3_bucket.strip()
         self.s3_region = self.s3_region.strip()
@@ -146,11 +174,42 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "s3_access_key_id and s3_secret_access_key must both be set or both be blank."
                 )
+        self.ses_region = self.ses_region.strip()
+        self.ses_configuration_set = self.ses_configuration_set.strip()
+        if self.environment == "production":
+            problems = self.production_problems()
+            if problems:
+                raise ValueError("Production settings are not safe yet: " + " ".join(problems))
         return self
+
+    def production_problems(self) -> list[str]:
+        """Development defaults that must not reach real clients' data. Empty when the settings are fit for production."""
+        problems = []
+        if self.database_url.startswith("sqlite"):
+            problems.append("DATABASE_URL must point to PostgreSQL.")
+        if self.storage_backend != "s3":
+            problems.append("STORAGE_BACKEND must be s3; local files are lost with the server.")
+        if self.email_backend not in ("smtp", "ses"):
+            problems.append("EMAIL_BACKEND must be smtp or ses; outbox only writes files.")
+        if not self.email_from:
+            problems.append("EMAIL_FROM must be set to an address on a verified domain.")
+        if not self.public_web_url.startswith("https://") or "localhost" in self.public_web_url:
+            problems.append("PUBLIC_WEB_URL must be the public https:// address; every link sent to clients starts with it.")
+        if not self.mfa_secret_key:
+            problems.append("MFA_SECRET_KEY must be set; it seals two-step login secrets and reminder links, and a key file is lost with the server.")
+        elif not _is_fernet_key(self.mfa_secret_key):
+            problems.append("MFA_SECRET_KEY must be 32 random bytes in base64 (44 characters).")
+        if self.auto_create_schema:
+            problems.append("AUTO_CREATE_SCHEMA must be false; the schema comes from Alembic migrations.")
+        return problems
 
     @property
     def resolved_mfa_key_path(self) -> Path:
         return self.mfa_key_path or (API_ROOT / "data" / "mfa.key")
+
+    @property
+    def resolved_ses_region(self) -> str:
+        return self.ses_region or self.s3_region or "il-central-1"
 
     @property
     def resolved_outbox_dir(self) -> Path:

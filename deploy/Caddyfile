@@ -1,0 +1,24 @@
+# The only service that listens on the internet. Caddy gets and renews the HTTPS certificate itself.
+# {$APP_DOMAIN} comes from the environment (deploy/.env), for example app.example.co.il.
+{$APP_DOMAIN} {
+	encode gzip
+
+	# Uploads of up to 20 files of 25 MB each go through here.
+	request_body {
+		max_size 520MB
+	}
+
+	reverse_proxy web:3000 {
+		# The app trusts only the rightmost X-Forwarded-For entry, so set it to the real visitor.
+		header_up X-Forwarded-For {remote_host}
+		# With the port, so it matches the browser's Origin header (the app's same-origin check compares the two).
+		header_up X-Forwarded-Host {hostport}
+		# The signer's chat streams its answer; send it on as it comes.
+		flush_interval -1
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

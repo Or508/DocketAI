@@ -16,6 +16,7 @@ def create_org_user(
     email: str = "staff@example.com",
     password: str = PASSWORD,
     display_name: str = "Staff",
+    role: str = "owner",
 ) -> None:
     async def create() -> None:
         from sqlalchemy import select
@@ -40,6 +41,7 @@ def create_org_user(
                         email=normalized,
                         password_hash=hash_password(password),
                         display_name=display_name,
+                        role=role,
                     )
                 )
             await session.commit()
@@ -55,6 +57,7 @@ def authenticate(
     password: str = PASSWORD,
     display_name: str = "Staff",
     set_header: bool = True,
+    role: str = "owner",
 ) -> dict:
     create_org_user(
         client,
@@ -62,6 +65,7 @@ def authenticate(
         email=email,
         password=password,
         display_name=display_name,
+        role=role,
     )
     response = client.post("/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200, response.text

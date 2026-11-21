@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,11 @@ export function LoginForm({ nextPath }: { nextPath: string | null }) {
           required
           autoComplete="current-password"
         />
+        <p className="mt-2 text-sm">
+          <Link href="/forgot-password" className="text-mist underline-offset-2 hover:text-tide hover:underline">
+            שכחתי סיסמה
+          </Link>
+        </p>
         {awaitingCode ? (
           <>
             <label className="mt-4 block text-sm font-semibold" htmlFor="mfa-code">

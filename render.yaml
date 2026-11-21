@@ -1,0 +1,134 @@
+# Render Blueprint: the whole production stack in Frankfurt.
+# Render → New → Blueprint → this repository. Then follow docs/deploy/render.md.
+#
+#   docketflow-web     public: the Next.js site (the only service on the internet)
+#   docketflow-api     private: FastAPI, reachable only from the site and the worker
+#   docketflow-worker  background: reads documents from the queue
+#   docketflow-redis   private: the queue
+#   docketflow-db      PostgreSQL with daily backups
+#
+# Files go to Cloudflare R2 and email to Resend (both set in the docketflow-secrets group, in the dashboard).
+
+services:
+  - type: web
+    name: docketflow-web
+    runtime: docker
+    region: frankfurt
+    plan: 0.5c-512mb
+    dockerfilePath: ./deploy/web.Dockerfile
+    dockerContext: .
+    healthCheckPath: /login
+    envVars:
+      - key: API_INTERNAL_HOSTPORT
+        fromService:
+          type: pserv
+          name: docketflow-api
+          property: hostport
+      # Render sits behind Cloudflare: the rightmost X-Forwarded-For entry is Cloudflare, not the visitor.
+      - key: CLIENT_IP_HEADER
+        value: cf-connecting-ip
+
+  - type: pserv
+    name: docketflow-api
+    runtime: docker
+    region: frankfurt
+    # PDF reading and its safety checks need more than 512 MB.
+    plan: 1c-2g
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: ./apps/api
+    # Runs `alembic upgrade head`, then listens on 8000.
+    dockerCommand: python -m app.boot api
+    envVars:
+      - fromGroup: docketflow-config
+      - fromGroup: docketflow-secrets
+      - key: DATABASE_URL
+        fromDatabase:
+          name: docketflow-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: docketflow-redis
+          property: connectionString
+
+  - type: worker
+    name: docketflow-worker
+    runtime: docker
+    region: frankfurt
+    plan: 1c-2g
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: ./apps/api
+    dockerCommand: python -m app.boot worker
+    envVars:
+      - fromGroup: docketflow-config
+      - fromGroup: docketflow-secrets
+      - key: DATABASE_URL
+        fromDatabase:
+          name: docketflow-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: docketflow-redis
+          property: connectionString
+
+  - type: keyvalue
+    name: docketflow-redis
+    region: frankfurt
+    # Internal only.
+    ipAllowList: []
+    # Queued jobs must never be dropped to free memory.
+    maxmemoryPolicy: noeviction
+
+databases:
+  - name: docketflow-db
+    region: frankfurt
+    plan: 0.5c-1g
+    postgresMajorVersion: "16"
+    databaseName: docketai
+    user: docket
+    # Internal only: no connections from the internet.
+    ipAllowList: []
+
+envVarGroups:
+  # Settings that are the same for every installation. Re-syncing the Blueprint rewrites these.
+  - name: docketflow-config
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: AUTO_CREATE_SCHEMA
+        value: "false"
+      - key: QUEUE_ENABLED
+        value: "true"
+      - key: QDRANT_URL
+        value: "off"
+      - key: STORAGE_BACKEND
+        value: s3
+      - key: S3_REGION
+        value: auto
+      - key: S3_FORCE_PATH_STYLE
+        value: "true"
+      - key: EMAIL_BACKEND
+        value: smtp
+      - key: SMTP_HOST
+        value: smtp.resend.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURITY
+        value: starttls
+      - key: SMTP_USERNAME
+        value: resend
+      - key: AI_PROVIDER
+        value: claude
+      - key: LOG_LEVEL
+        value: INFO
+      # Public showcase at /demo. Leave false for a real office; turning it on does not relax the production checks.
+      - key: DEMO_MODE
+        value: "false"
+
+  # Values only you have. Add the rest in the dashboard (docs/deploy/render.md, step 4); a re-sync keeps them.
+  - name: docketflow-secrets
+    envVars:
+      # Seals two-step login secrets and reminder links. Render makes it once; copy it to a password manager.
+      - key: MFA_SECRET_KEY
+        generateValue: true

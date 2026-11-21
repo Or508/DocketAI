@@ -106,7 +106,7 @@ export function ReadinessShield({
               ))}
             </ul>
           ) : (
-            <p className="mt-1 font-semibold text-[#0d4a2e]">✓ ת״ז ונייד תקינים, והשדות מולאו</p>
+            <p className="mt-1 font-semibold text-[#0d4a2e]">✓ השדות מולאו</p>
           )}
         </li>
         {integrity ? <IntegrityChecks report={integrity} /> : null}

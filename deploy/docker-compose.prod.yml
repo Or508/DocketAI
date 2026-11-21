@@ -1,0 +1,91 @@
+# Production on one server (EC2 in il-central-1). PostgreSQL is RDS, files are S3, email is SES:
+# none of them run here. Only Caddy listens on the internet (80/443); everything else stays inside.
+#
+#   cd /opt/docketflow
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
+#
+# See docs/deploy/aws-tel-aviv.md.
+name: docketflow
+
+x-api-env: &api-env
+  env_file: .env
+  environment:
+    ENVIRONMENT: production
+    AUTO_CREATE_SCHEMA: "false"
+    STORAGE_BACKEND: s3
+    EMAIL_BACKEND: ses
+    REDIS_URL: redis://redis:6379/0
+    QUEUE_ENABLED: "true"
+    # Label memory (Qdrant) is optional and off on this server.
+    QDRANT_URL: ""
+
+services:
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_started
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    build: ../apps/api
+    restart: unless-stopped
+    <<: *api-env
+    # Runs `alembic upgrade head` before it listens (app/boot.py).
+    command: ["python", "-m", "app.boot", "api"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ../apps/api
+    restart: unless-stopped
+    <<: *api-env
+    command: ["python", "-m", "app.boot", "worker"]
+    stop_grace_period: 30s
+    depends_on:
+      api:
+        condition: service_healthy
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  caddy-data:
+  caddy-config:
+  redis:

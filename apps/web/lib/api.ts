@@ -75,6 +75,9 @@ export interface OfficeProfile {
   profession_label_he: string;
   client_term_he: string;
   case_term_he: string;
+  role: "owner" | "staff";
+  /** When the office is a public demo, the moment it is deleted. Null for a real office. */
+  demo_expires_at: string | null;
 }
 
 export interface ProfessionOption {
@@ -88,12 +91,44 @@ export interface OrganizationProfile {
   name: string;
   profession: ProfessionOption;
   ai_reading_enabled: boolean;
+  contact_phone: string | null;
+  contact_email: string | null;
   professions: ProfessionOption[];
 }
 
 export interface SecurityStatus {
   mfa_enabled: boolean;
   recovery_codes_left: number;
+  min_password_length: number;
+}
+
+export type MemberRole = "owner" | "staff";
+export type MemberStatus = "active" | "invited" | "invite_expired" | "inactive";
+
+export interface Member {
+  id: string;
+  email: string;
+  display_name: string;
+  role: MemberRole;
+  status: MemberStatus;
+  is_you: boolean;
+  mfa_enabled: boolean;
+  created_at: string;
+  invite_expires_at: string | null;
+}
+
+export interface InviteResult {
+  member: Member;
+  invite_url: string;
+  email_sent: boolean;
+  email_error: string | null;
+}
+
+export interface AccountLink {
+  purpose: "invite" | "reset";
+  email: string;
+  display_name: string;
+  organization_name: string;
   min_password_length: number;
 }
 
@@ -161,6 +196,8 @@ export const api = {
     request<OrganizationProfile>("/organization/profession", { method: "PUT", body: JSON.stringify({ profession }) }),
   setAiReading: (enabled: boolean) =>
     request<OrganizationProfile>("/organization/ai-reading", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  updateContact: (phone: string, email: string) =>
+    request<OrganizationProfile>("/organization/contact", { method: "PUT", body: JSON.stringify({ phone, email }) }),
   security: () => request<SecurityStatus>("/auth/security"),
   changePassword: (current_password: string, new_password: string) =>
     request<void>("/auth/password", { method: "POST", body: JSON.stringify({ current_password, new_password }) }),
@@ -243,6 +280,46 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ role, display_title: displayTitle ?? null }),
     }),
+  team: () => request<Member[]>("/team"),
+  inviteMember: (body: { email: string; display_name: string; role: MemberRole }) =>
+    request<InviteResult>("/team/invite", { method: "POST", body: JSON.stringify(body) }),
+  resendInvite: (id: string) => request<InviteResult>(`/team/${encodeURIComponent(id)}/resend-invite`, { method: "POST" }),
+  updateMember: (id: string, body: { role?: MemberRole; is_active?: boolean; display_name?: string }) =>
+    request<Member>(`/team/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+};
+
+// Public account links. No office session, and a 401 must not send the person to the office login.
+async function accountRequest<T>(path: string, body: unknown): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`/api/account/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      referrerPolicy: "no-referrer",
+    });
+  } catch {
+    throw new ApiError("לא ניתן להגיע לשירות המשרד.", 502);
+  }
+  if (!response.ok) {
+    let message = response.statusText;
+    try {
+      message = detailFrom(await response.json());
+    } catch {
+      message = response.statusText;
+    }
+    throw new ApiError(message || "Request failed", response.status);
+  }
+  if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
+export const account = {
+  link: (token: string) => accountRequest<AccountLink>("link", { token }),
+  acceptInvite: (token: string, password: string) => accountRequest<void>("invite/accept", { token, password }),
+  forgotPassword: (email: string) => accountRequest<{ detail: string }>("password/forgot", { email }),
+  resetPassword: (token: string, password: string) => accountRequest<void>("password/reset", { token, password }),
 };
 
 export function signedDocumentUrl(caseId: string) {

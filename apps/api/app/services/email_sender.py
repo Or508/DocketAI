@@ -52,6 +52,8 @@ class EmailSender:
     def available(self) -> bool:
         if self.settings.email_backend == "smtp":
             return bool(self.settings.smtp_host and self.settings.email_from)
+        if self.settings.email_backend == "ses":
+            return bool(self.settings.email_from)
         return self.settings.email_backend == "outbox"
 
     async def send(self, message: EmailMessage) -> None:
@@ -60,6 +62,14 @@ class EmailSender:
             raise EmailError("שליחת אימייל לא הוגדרה בשרת.")
         if backend == "outbox":
             await asyncio.to_thread(self._write_outbox, message)
+            return
+        if backend == "ses":
+            from botocore.exceptions import BotoCoreError, ClientError
+
+            try:
+                await asyncio.to_thread(self._send_ses, message)
+            except (BotoCoreError, ClientError) as exc:
+                raise EmailError("שרת הדואר לא קיבל את ההודעה. נסו שוב מאוחר יותר.") from exc
             return
         try:
             await asyncio.to_thread(self._send_smtp, message)
@@ -72,6 +82,19 @@ class EmailSender:
         # Microseconds keep the files in the order they were written when two leave in the same second.
         name = f"{utcnow():%Y%m%dT%H%M%S%f}-{uuid.uuid4().hex[:8]}.eml"
         (folder / name).write_bytes(bytes(message))
+
+    def _send_ses(self, message: EmailMessage) -> None:
+        import boto3
+
+        client = boto3.client("sesv2", region_name=self.settings.resolved_ses_region)
+        request: dict = {
+            "FromEmailAddress": self.settings.email_from,
+            "Destination": {"ToAddresses": [str(message["To"])]},
+            "Content": {"Raw": {"Data": bytes(message)}},
+        }
+        if self.settings.ses_configuration_set:
+            request["ConfigurationSetName"] = self.settings.ses_configuration_set
+        client.send_email(**request)
 
     def _send_smtp(self, message: EmailMessage) -> None:
         settings = self.settings

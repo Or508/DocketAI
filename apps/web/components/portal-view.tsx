@@ -1,6 +1,6 @@
 "use client";
 
-import type { FieldSpec, PortalView } from "@docketai/shared-types";
+import type { FieldSpec, OfficeContact, PortalView } from "@docketai/shared-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { IntegrityPanel } from "@/components/integrity-panel";
@@ -13,7 +13,9 @@ import { hebrewOfficeError, PORTAL_CONSENT_HE } from "@/lib/hebrew";
 import { portalApi, portalCertificateUrl, portalDownloadUrl, portalPreviewUrl } from "@/lib/portal-api";
 
 const RECORDING = "נרשמים מועד החתימה, כתובת הרשת ופרטי הדפדפן על גבי אישור החתימה.";
-const REVIEW_AGAIN = "המשרד עדכן פרט בטופס בהסכמתך – אנא עבור על הטופס המעודכן לפני החתימה";
+const REVIEW_AGAIN = "המשרד עדכן פרט בטופס בהסכמתכם. עברו על הטופס המעודכן לפני החתימה.";
+const NOT_READY = "המשרד עוד משלים את הטופס. כשיהיה מוכן לחתימה תקבלו הודעה.";
+const HEADING_FOCUS = "rounded-sm focus:outline-none focus:ring-2 focus:ring-tide focus:ring-offset-2";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -35,6 +37,23 @@ export function PortalViewScreen({ token }: { token: string }) {
   const [step, setStep] = useState<Step>(1);
   const [previewStamp, setPreviewStamp] = useState("");
   const synced = useRef(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const doneRef = useRef<HTMLElement>(null);
+  const focusStep = useRef(false);
+
+  function moveTo(next: Step) {
+    focusStep.current = true;
+    setStep(next);
+  }
+
+  useEffect(() => {
+    if (!focusStep.current) return;
+    focusStep.current = false;
+    const heading = headingRef.current ?? doneRef.current?.querySelector("h2");
+    if (!(heading instanceof HTMLElement)) return;
+    heading.tabIndex = -1;
+    heading.focus();
+  }, [step]);
 
   const load = useCallback(async () => {
     try {
@@ -86,11 +105,13 @@ export function PortalViewScreen({ token }: { token: string }) {
         consent: true,
       });
       setSigning(false);
+      focusStep.current = true;
       setStep(4);
       setView(next);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         setSigning(false);
+        focusStep.current = true;
         setStep(2);
         setNotice(REVIEW_AGAIN);
         await load();
@@ -105,7 +126,8 @@ export function PortalViewScreen({ token }: { token: string }) {
   if (revoked) {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
-        <h1 className="font-serif text-3xl">קישור החתימה בוטל על ידי המשרד לצורך עדכון פרטים. אנא פנה למשרד לקבלת קישור מעודכן.</h1>
+        <h1 className="font-serif text-3xl">הקישור בוטל</h1>
+        <p className="mt-3 text-sm leading-7">המשרד ביטל את קישור החתימה כדי לעדכן פרטים. פנו למשרד לקבלת קישור חדש.</p>
       </main>
     );
   }
@@ -114,6 +136,7 @@ export function PortalViewScreen({ token }: { token: string }) {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
         <h1 className="font-serif text-3xl">הקישור הזה כבר לא פעיל</h1>
+        <p className="mt-3 text-sm leading-7">ייתכן שהטופס כבר נחתם או שתוקף הקישור פג. לקבלת קישור חדש פנו למשרד.</p>
       </main>
     );
   }
@@ -121,7 +144,9 @@ export function PortalViewScreen({ token }: { token: string }) {
   if (!view) {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
-        <p className="text-sm text-ink">{notice ?? "טוען את הטופס."}</p>
+        <p className="text-sm text-ink" role="status">
+          {notice ?? "טוען את הטופס."}
+        </p>
       </main>
     );
   }
@@ -133,23 +158,22 @@ export function PortalViewScreen({ token }: { token: string }) {
       <header>
         <p className="text-sm font-semibold text-tide">חתימת לקוח</p>
         <h1 className="font-serif text-4xl">{processLabel(view.process.name, view.process.name)}</h1>
+        <SentBy office={view.office} />
         {view.client_name ? <p className="mt-2 text-lg">{view.client_name}</p> : null}
+        {step === 1 ? (
+          <p className="mt-3 text-sm leading-7">בדקו את הפרטים, צפו בטופס, וחתמו. זה לוקח כמה דקות, ואפשר לחזור אחורה בכל שלב.</p>
+        ) : null}
       </header>
-      <ol aria-label="התקדמות החתימה" className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
-        {(
-          [
-            ["1", "בדיקת פרטים וטופס"],
-            ["2", "חתימה על המסמך"],
-            ["3", "אישור וחותם דיגיטלי"],
-          ] as const
-        ).map(([number, label]) => {
-          const phase = step <= 2 ? 1 : step === 3 ? 2 : 3;
-          const current = String(phase) === number;
-          const done = phase > Number(number);
+      <p className="text-sm font-semibold">שלב {step} מתוך 4</p>
+      <ol aria-label="שלבי החתימה" className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+        {STEP_LABELS.map((label, index) => {
+          const number = (index + 1) as Step;
+          const current = step === number;
+          const done = step > number;
           return (
             <li
-              key={number}
-              className={`rounded-md border px-3 py-2 text-center font-semibold ${current ? "border-tide bg-tide text-white" : done ? "border-moss bg-[#e7f5ee] text-[#0d4a2e]" : "border-ink/15 bg-white text-ink"}`}
+              key={label}
+              className={`rounded-md border px-3 py-2 text-center font-semibold leading-5 ${current ? "border-tide bg-tide text-white" : done ? "border-moss bg-[#e7f5ee] text-[#0d4a2e]" : "border-ink/15 bg-white text-ink"}`}
               aria-current={current ? "step" : undefined}
             >
               {number}. {label}
@@ -157,21 +181,6 @@ export function PortalViewScreen({ token }: { token: string }) {
           );
         })}
       </ol>
-      <nav aria-label="שלבי החתימה" className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-        {STEP_LABELS.map((label, index) => {
-          const number = (index + 1) as Step;
-          const current = step === number;
-          return (
-            <p
-              key={label}
-              className={`rounded-md border px-2 py-2 text-center font-semibold leading-5 ${current ? "border-tide bg-tide text-white" : "border-ink/15 bg-white text-ink"}`}
-              aria-current={current ? "step" : undefined}
-            >
-              {number}. {label}
-            </p>
-          );
-        })}
-      </nav>
       {notice ? (
         <p
           className={`rounded-md border px-4 py-3 text-sm font-semibold ${
@@ -186,7 +195,9 @@ export function PortalViewScreen({ token }: { token: string }) {
       ) : null}
       {step === 1 ? (
         <section className="rounded-lg border border-ink/15 bg-white p-6 shadow-card">
-          <h2 className="font-serif text-3xl">בדיקת פרטים והסברים</h2>
+          <h2 ref={headingRef} tabIndex={-1} className={`font-serif text-3xl ${HEADING_FOCUS}`}>
+            בדיקת פרטים והסברים
+          </h2>
           <p className="mt-3 text-sm leading-7">
             אלה הפרטים האישיים שנרשמו בטופס, והמקום בטופס שבו כל פרט נכתב. אין כאן מה להקליד.
           </p>
@@ -221,15 +232,18 @@ export function PortalViewScreen({ token }: { token: string }) {
               </li>
             ))}
           </ul>
-          <Button type="button" className="mt-6 min-h-11 w-full" disabled={!ready} onClick={() => setStep(2)}>
+          <Button type="button" className="mt-6 min-h-11 w-full" disabled={!ready} onClick={() => moveTo(2)}>
             {ready ? "המשך לצפייה בטופס" : "הטופס עוד לא מוכן"}
           </Button>
+          {ready ? null : <p className="mt-3 text-sm leading-7">{NOT_READY}</p>}
         </section>
       ) : null}
       {step === 2 ? (
         <section className="min-w-0 rounded-lg border border-ink/15 bg-white shadow-card">
           <div className="border-b border-ink/10 px-4 py-4">
-            <h2 className="font-serif text-2xl">צפייה בטופס המלא</h2>
+            <h2 ref={headingRef} tabIndex={-1} className={`font-serif text-2xl ${HEADING_FOCUS}`}>
+              צפייה בטופס המלא
+            </h2>
           </div>
           <div className="min-w-0 overflow-hidden px-4 py-4">
             <details className="mb-4 rounded-md border border-ink/10 bg-[#fbf8f2] px-3 py-3" open>
@@ -246,18 +260,21 @@ export function PortalViewScreen({ token }: { token: string }) {
             <PdfCanvas url={portalPreviewUrl(token)} refreshKey={`${view.review_digest ?? ""}:${previewStamp}`} />
           </div>
           <div className="flex flex-col gap-2 px-4 pb-4">
-            <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => setStep(1)}>
+            <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => moveTo(1)}>
               חזרה לפרטים
             </Button>
-            <Button type="button" className="min-h-11 w-full" disabled={!ready} onClick={() => setStep(3)}>
+            <Button type="button" className="min-h-11 w-full" disabled={!ready} onClick={() => moveTo(3)}>
               המשך לחתימה
             </Button>
+            {ready ? null : <p className="text-sm leading-7">{NOT_READY}</p>}
           </div>
         </section>
       ) : null}
       {step === 3 ? (
         <section className="rounded-lg border border-ink/15 bg-white p-4 shadow-card">
-          <h2 className="font-serif text-2xl">חתימה דיגיטלית</h2>
+          <h2 ref={headingRef} tabIndex={-1} className={`font-serif text-2xl ${HEADING_FOCUS}`}>
+            חתימה דיגיטלית
+          </h2>
           <div className="mt-4 md:hidden">
             <SignatureForm busy={busy} consentLabel={PORTAL_CONSENT_HE} notice={RECORDING} alert={notice} onSign={sign} />
           </div>
@@ -275,18 +292,21 @@ export function PortalViewScreen({ token }: { token: string }) {
               onSign={sign}
             />
           </div>
-          <Button type="button" variant="outline" className="mt-4 min-h-11 w-full" onClick={() => setStep(2)}>
+          <Button type="button" variant="outline" className="mt-4 min-h-11 w-full" onClick={() => moveTo(2)}>
             חזרה לטופס
           </Button>
         </section>
       ) : null}
       {step === 4 && view.seal ? (
-        <IntegrityPanel
-          seal={view.seal}
-          downloadExpiresAt={view.download_expires_at}
-          signedPdfUrl={portalDownloadUrl(token)}
-          certificateUrl={portalCertificateUrl(token)}
-        />
+        <section ref={doneRef}>
+          <IntegrityPanel
+            seal={view.seal}
+            downloadExpiresAt={view.download_expires_at}
+            signedPdfUrl={portalDownloadUrl(token)}
+            certificateUrl={portalCertificateUrl(token)}
+            fields={view.process.required_fields}
+          />
+        </section>
       ) : null}
     </main>
   );
@@ -310,7 +330,7 @@ function ClientUpload({
     <div className="mt-5 rounded-md border border-ink/15 bg-[#fbf8f2] p-4">
       <p className="font-semibold">העלאת מסמך מעודכן מהנייד (ת"ז / ארנונה / אישור בנק)</p>
       <label className="mt-3 block text-sm font-semibold" htmlFor="client-drawer">
-        מגירה
+        סוג המסמך
       </label>
       <select
         id="client-drawer"
@@ -324,7 +344,7 @@ function ClientUpload({
           </option>
         ))}
       </select>
-      <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center rounded-md bg-ink px-3 text-sm font-semibold text-white">
+      <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center rounded-md bg-ink px-3 text-sm font-semibold text-white focus-within:ring-2 focus-within:ring-tide focus-within:ring-offset-2">
         {busy ? "שולח…" : "צילום או קובץ"}
         <input
           className="sr-only"
@@ -338,6 +358,32 @@ function ClientUpload({
           }}
         />
       </label>
+    </div>
+  );
+}
+
+function SentBy({ office }: { office: OfficeContact | null }) {
+  if (!office) return null;
+  const phone = office.phone?.trim() || null;
+  const email = office.email?.trim() || null;
+  return (
+    <div className="mt-2 text-sm leading-6">
+      <p>נשלח אליכם מ{office.name}</p>
+      {phone || email ? (
+        <p className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-1">
+          <span>לשאלות</span>
+          {phone ? (
+            <a className="break-all underline-offset-2 hover:underline" dir="ltr" href={`tel:${phone}`}>
+              {phone}
+            </a>
+          ) : null}
+          {email ? (
+            <a className="min-w-0 break-all underline-offset-2 hover:underline" dir="ltr" href={`mailto:${email}`}>
+              {email}
+            </a>
+          ) : null}
+        </p>
+      ) : null}
     </div>
   );
 }

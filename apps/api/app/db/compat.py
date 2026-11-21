@@ -37,15 +37,21 @@ def _add_missing_case_columns(sync_conn) -> None:
     tables = inspect(sync_conn).get_table_names()
     if "cases" in tables:
         # Client messages live in their own tables, so an existing database only gains two tables.
+        from app.models.account_token import AccountToken
         from app.models.outreach import CaseOutreach, OutboundMessage
 
-        for model in (CaseOutreach, OutboundMessage):
+        for model in (CaseOutreach, OutboundMessage, AccountToken):
             model.__table__.create(sync_conn, checkfirst=True)
     if "organizations" in tables:
         present = {column["name"] for column in inspect(sync_conn).get_columns("organizations")}
         if "profession" not in present:
             # Every office that existed before professions is a law office.
             sync_conn.execute(text("ALTER TABLE organizations ADD COLUMN profession VARCHAR(40) NOT NULL DEFAULT 'law'"))
+        for name, ddl in {"contact_phone": "VARCHAR(40)", "contact_email": "VARCHAR(320)"}.items():
+            if name not in present:
+                sync_conn.execute(text(f"ALTER TABLE organizations ADD COLUMN {name} {ddl}"))
+        if "demo_expires_at" not in present:
+            sync_conn.execute(text("ALTER TABLE organizations ADD COLUMN demo_expires_at TIMESTAMP WITH TIME ZONE"))
         if "ai_reading_enabled" not in present:
             true = "true" if sync_conn.dialect.name == "postgresql" else "1"
             sync_conn.execute(text(f"ALTER TABLE organizations ADD COLUMN ai_reading_enabled BOOLEAN NOT NULL DEFAULT {true}"))
@@ -58,6 +64,8 @@ def _add_missing_case_columns(sync_conn) -> None:
             "mfa_pending_secret": "TEXT",
             "mfa_last_step": "INTEGER",
             "mfa_recovery_hashes": "JSON",
+            # Users from before roles keep managing their office.
+            "role": "VARCHAR(16) NOT NULL DEFAULT 'owner'",
         }.items():
             if name not in present:
                 sync_conn.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))

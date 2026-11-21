@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { forwardedClientIp } from "@/lib/server/client-ip";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -20,7 +22,7 @@ async function proxy(request: Request, context: { params: Promise<{ token: strin
     const headers = new Headers();
     headers.set("Authorization", `Bearer ${token}`);
     headers.set("X-Signing-Token", token);
-    headers.set("X-Portal-Client-Ip", rightmostForwarded(request.headers.get("x-forwarded-for")));
+    headers.set("X-Portal-Client-Ip", forwardedClientIp(request));
     headers.set("X-Portal-User-Agent", request.headers.get("user-agent") ?? "");
     const contentType = request.headers.get("content-type");
     if (contentType) headers.set("Content-Type", contentType);
@@ -52,13 +54,6 @@ async function proxy(request: Request, context: { params: Promise<{ token: strin
   }
 }
 
-function rightmostForwarded(header: string | null): string {
-  const parts = (header ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-  return parts.length > 0 ? parts[parts.length - 1] : "";
-}
 
 export const GET = proxy;
 export const POST = proxy;

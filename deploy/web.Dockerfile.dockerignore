@@ -1,0 +1,10 @@
+**/node_modules
+**/.next
+**/.next-preview
+**/*.tsbuildinfo
+.git
+.venv
+apps/api
+test_files_for_browser
+**/.env
+**/.env.*

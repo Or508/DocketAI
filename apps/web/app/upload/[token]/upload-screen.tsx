@@ -1,7 +1,9 @@
 "use client";
 
+import type { OfficeContact } from "@docketai/shared-types";
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 
+import { LegalFooter } from "@/app/(legal)/legal-footer";
 import { PublicBrand } from "@/app/verify/public-brand";
 
 type Drawer = { document_type: string; label_he: string; filled: boolean; filename: string | null };
@@ -14,6 +16,7 @@ type Intake = {
   status: string;
   required_drawers: Drawer[];
   all_drawers_filled: boolean;
+  office: OfficeContact | null;
 };
 
 type RoutedFile = {
@@ -118,6 +121,7 @@ export function UploadScreen({ token }: { token: string }) {
       <header>
         <p className="text-sm font-semibold text-tide">קישור אישי ומאובטח מהמשרד</p>
         <h1 className="mt-2 text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">העלאת מסמכים מאובטחת לתיק</h1>
+        {view.kind === "ready" ? <SentBy office={view.intake.office} /> : null}
       </header>
 
       {view.kind === "loading" ? (
@@ -172,6 +176,7 @@ export function UploadScreen({ token }: { token: string }) {
                 תודה! המסמכים הועברו למשרד ואין צורך בפעולה נוספת. אפשר לסגור את הדף. אם העליתם מסמך שגוי, אפשר
                 להחליף אותו כאן למטה.
               </p>
+              <p className="mt-2 text-mist">מה הלאה: המשרד יבדוק את המסמכים. אם יידרשו פרטים נוספים או חתימה, תקבלו הודעה.</p>
             </section>
           ) : null}
 
@@ -252,7 +257,34 @@ export function UploadScreen({ token }: { token: string }) {
         </>
       ) : null}
     </main>
+    <LegalFooter frame="max-w-xl px-4" />
     </>
+  );
+}
+
+function SentBy({ office }: { office: OfficeContact | null }) {
+  if (!office) return null;
+  const phone = office.phone?.trim() || null;
+  const email = office.email?.trim() || null;
+  return (
+    <div className="mt-2 text-sm leading-6">
+      <p>נשלח אליכם מ{office.name}</p>
+      {phone || email ? (
+        <p className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-1">
+          <span>לשאלות</span>
+          {phone ? (
+            <a className="break-all underline-offset-2 hover:underline" dir="ltr" href={`tel:${phone}`}>
+              {phone}
+            </a>
+          ) : null}
+          {email ? (
+            <a className="min-w-0 break-all underline-offset-2 hover:underline" dir="ltr" href={`mailto:${email}`}>
+              {email}
+            </a>
+          ) : null}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

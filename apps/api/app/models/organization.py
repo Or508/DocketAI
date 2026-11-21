@@ -18,4 +18,9 @@ class Organization(Base):
     profession: Mapped[str] = mapped_column(String(40), default="law", server_default="law", nullable=False)
     # Off: no document, page, or chat message of this office is sent to an AI model (ai_policy.py).
     ai_reading_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=False)
+    # How a client reaches the office. Shown on the client's signing and upload pages.
+    contact_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    # Set only for a public demo office. Real offices stay null, and cleanup deletes a demo once this moment has passed.
+    demo_expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)

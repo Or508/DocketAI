@@ -38,6 +38,7 @@ from app.models.case import Case
 from app.models.intake_link import IntakeLink
 from app.models.organization import Organization
 from app.models.outreach import CaseOutreach, OutboundMessage
+from app.services.demo_guard import is_demo, refuse_demo_email
 from app.models.signing_link import SigningLink
 from app.schemas.outreach import DueReminder, OutreachMessage, OutreachSendRequest, OutreachSent, OutreachState
 from app.services.case_service import CaseService
@@ -94,6 +95,8 @@ class OutreachService:
             raise BadRequestError(_NO_CONTACT[request.channel])
         if request.channel == "email" and not self.email.available:
             raise ConflictError("שליחת אימייל לא הוגדרה בשרת. אפשר לשלוח בוואטסאפ או להעתיק את הקישור.")
+        if request.channel == "email":
+            refuse_demo_email(await self.session.get(Organization, case.organization_id))
         await self._check_daily_cap(case.id)
 
         # A new link replaces the open one, as it does from the office's own buttons.
@@ -186,6 +189,8 @@ class OutreachService:
             raise ConflictError(_STOPPED_MESSAGE.get(reason, "אין למה להזכיר: הקישור כבר לא פעיל."))
         if outreach.channel == "email" and not self.email.available:
             raise ConflictError("שליחת אימייל לא הוגדרה בשרת.")
+        if outreach.channel == "email":
+            refuse_demo_email(await self.session.get(Organization, case.organization_id))
         await self._check_daily_cap(case.id)
         url, expires_at = await self._current_link(outreach)
         office = await self._office_name(case)
@@ -283,6 +288,12 @@ class OutreachService:
     async def _email_reminder(self, outreach: CaseOutreach) -> bool:
         case = await self.session.scalar(case_query(self.scope).where(Case.id == outreach.case_id))
         if case is None:
+            return False
+        organization = await self.session.get(Organization, case.organization_id)
+        if is_demo(organization):
+            outreach.stopped_reason = "turned_off"
+            outreach.next_reminder_at = None
+            await self.session.commit()
             return False
         reason = await self._stop_reason(case, outreach)
         if reason is not None:

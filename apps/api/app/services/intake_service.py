@@ -105,7 +105,9 @@ class IntakeService:
 
     async def status(self, token: str) -> IntakeStatus:
         _link, case = await self.resolve(token)
-        return IntakeStatus(**_public_status(case))
+        from app.services.office_contact import office_contact
+
+        return IntakeStatus(**_public_status(case), office=await office_contact(self.session, case.organization_id))
 
     async def upload(self, token: str, files: list[UploadFile], document_type: str | None) -> IntakeUploadResult:
         """File what the client sent. Each file goes to the drawer its name and text point to."""
@@ -129,8 +131,11 @@ class IntakeService:
         )
         self.session.expire_all()
         case = await self.cases._get_case(case_id)
+        from app.services.office_contact import office_contact
+
         return IntakeUploadResult(
             **_public_status(case),
+            office=await office_contact(self.session, case.organization_id),
             routed_files=[_public_file(item) for item in result.routed_files],
         )
 

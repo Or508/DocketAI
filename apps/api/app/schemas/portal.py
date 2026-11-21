@@ -31,6 +31,14 @@ class PortalSeal(BaseModel):
     time_zone: Literal["Asia/Jerusalem"]
 
 
+class OfficeContact(BaseModel):
+    """Who sent the client this link, and how to reach them. Blank fields were not set by the office."""
+
+    name: str
+    phone: str | None
+    email: str | None
+
+
 class PortalView(BaseModel):
     state: Literal["open", "completed"]
     process: PortalProcess
@@ -46,6 +54,7 @@ class PortalView(BaseModel):
     download_expires_at: datetime | None
     consent_text: str
     seal: PortalSeal | None = None
+    office: OfficeContact | None = None
 
 
 class PortalSignRequest(BaseModel):

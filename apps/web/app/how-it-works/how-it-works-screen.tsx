@@ -736,9 +736,12 @@ function SiteFooter() {
     <footer className="border-t border-line bg-white">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-sm text-mist">
         <span dir="ltr">DocketFlow</span>
-        <nav aria-label="קישורים" className="flex gap-5">
+        <nav aria-label="קישורים" className="flex flex-wrap gap-x-5 gap-y-2">
           <Link href="/verify" className="hover:text-ink">אימות מסמך חתום</Link>
           <Link href="/login" className="hover:text-ink">כניסה למשרד</Link>
+          <Link href="/privacy" className="hover:text-ink">מדיניות פרטיות</Link>
+          <Link href="/terms" className="hover:text-ink">תנאי שימוש</Link>
+          <Link href="/accessibility" className="hover:text-ink">הצהרת נגישות</Link>
         </nav>
       </div>
     </footer>

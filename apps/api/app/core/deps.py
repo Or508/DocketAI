@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.container import Container
-from app.core.exceptions import NotFoundError, UnauthorizedError
+from app.core.exceptions import ForbiddenError, NotFoundError, UnauthorizedError
 from app.db.session import get_session
 from app.domain.case_scope import CaseScope
 from app.models.user import User
@@ -31,6 +31,13 @@ async def current_user(
 ) -> User:
     token = _bearer(request)
     return await AuthService(session, get_settings()).resolve_session(token)
+
+
+async def require_owner(user: User = Depends(current_user)) -> User:
+    """Office settings and people: owners only."""
+    if user.role != "owner":
+        raise ForbiddenError("רק מנהל המשרד יכול לשנות את זה.")
+    return user
 
 
 def office_scope(user: User = Depends(current_user)) -> CaseScope:

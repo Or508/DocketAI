@@ -348,6 +348,12 @@ export interface PortalSeal {
   time_zone: "Asia/Jerusalem";
 }
 
+export interface OfficeContact {
+  name: string;
+  phone: string | null;
+  email: string | null;
+}
+
 export interface PortalView {
   state: "open" | "completed";
   process: PortalProcess;
@@ -363,6 +369,7 @@ export interface PortalView {
   download_expires_at: string | null;
   consent_text: string;
   seal: PortalSeal | null;
+  office: OfficeContact | null;
 }
 
 export interface PortalSignRequest {

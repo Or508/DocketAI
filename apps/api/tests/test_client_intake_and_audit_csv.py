@@ -41,6 +41,8 @@ _STATUS_KEYS = {
     "status",
     "required_drawers",
     "all_drawers_filled",
+    # The office that asked (its name and how to reach it), never anything about the client.
+    "office",
 }
 _DRAWER_KEYS = {"document_type", "label_he", "filled", "filename"}
 _CSV_COLUMNS = ["event_id", "created_at", "case_id", "client_name", "process_type", "action", "actor"]

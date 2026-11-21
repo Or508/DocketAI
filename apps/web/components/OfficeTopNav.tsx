@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Building2, FolderOpen, LogOut, Menu, Search, X } from "lucide-react";
 
 import { CommandPalette } from "@/components/command-palette";
@@ -34,6 +34,8 @@ export function OfficeTopNav() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [organization, setOrganization] = useState<string | null>(null);
+  const [demoUntil, setDemoUntil] = useState<string | null>(null);
+  const shell = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -50,9 +52,13 @@ export function OfficeTopNav() {
   useEffect(() => {
     let cancelled = false;
     fetch("/api/office/auth/me", { cache: "no-store" })
-      .then(async (response) => (response.ok ? ((await response.json()) as { organization_name: string }) : null))
+      .then(async (response) =>
+        response.ok ? ((await response.json()) as { organization_name: string; demo_expires_at?: string | null }) : null,
+      )
       .then((user) => {
-        if (!cancelled && user) setOrganization(user.organization_name);
+        if (cancelled || !user) return;
+        setOrganization(user.organization_name);
+        setDemoUntil(user.demo_expires_at ?? null);
       })
       .catch(() => undefined);
     return () => {
@@ -63,6 +69,22 @@ export function OfficeTopNav() {
   // A link followed from the drawer closes it.
   useEffect(() => setDrawerOpen(false), [path]);
 
+  // The bar is fixed. Its height includes the demo banner when that banner wraps, so the page starts below it.
+  useEffect(() => {
+    const node = shell.current;
+    if (!node) return;
+    const apply = () => {
+      document.body.style.paddingTop = `${node.offsetHeight}px`;
+    };
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      document.body.style.paddingTop = "";
+    };
+  }, [demoUntil]);
+
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.assign("/login");
@@ -70,12 +92,20 @@ export function OfficeTopNav() {
 
   const office = organization ? (ORGANIZATION_LABELS[organization] ?? organization) : null;
 
+  const whatsApp = `https://wa.me/972547302757?text=${encodeURIComponent("היי, ראיתי את הדמו של DocFlow ואשמח לשמוע עוד")}`;
+
   return (
     <>
-      <header
-        data-office-shell
-        className="fixed inset-x-0 top-0 z-30 h-16 border-b border-line bg-white/95 backdrop-blur print:hidden"
-      >
+      <div ref={shell} data-office-shell className="fixed inset-x-0 top-0 z-30 print:hidden">
+      {demoUntil ? (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 bg-tide px-4 py-2 text-sm text-white">
+          <p>דמו · נמחק אוטומטית ב-{demoClock(demoUntil)} · לא להעלות מידע אמיתי</p>
+          <a className="font-semibold underline-offset-2 hover:underline" href={whatsApp} target="_blank" rel="noopener noreferrer">
+            דברו איתנו בוואטסאפ: 054-7302757
+          </a>
+        </div>
+      ) : null}
+      <header className="h-16 border-b border-line bg-white/95 backdrop-blur">
         <div className="flex h-full items-center justify-between gap-4 whitespace-nowrap px-4 lg:px-6">
           {/* Right: brand and sections. */}
           <div className="flex h-full min-w-0 items-center gap-6">
@@ -154,6 +184,7 @@ export function OfficeTopNav() {
           </div>
         </div>
       </header>
+      </div>
 
       {drawerOpen ? (
         <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="תפריט המשרד">
@@ -208,9 +239,32 @@ export function OfficeTopNav() {
         </div>
       ) : null}
 
+      {demoUntil ? (
+        <a
+          href={whatsApp}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="fixed bottom-5 left-5 z-30 inline-flex h-12 items-center rounded-full bg-[#25D366] px-4 text-sm font-semibold text-white shadow-md print:hidden"
+        >
+          וואטסאפ
+        </a>
+      ) : null}
+
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </>
   );
+}
+
+function demoClock(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat("he-IL", {
+    timeZone: "Asia/Jerusalem",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function Brand() {

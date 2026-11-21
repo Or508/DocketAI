@@ -46,6 +46,8 @@ async def _create_user(organization: str, email: str, display_name: str, passwor
                 email=normalized,
                 password_hash=hash_password(password),
                 display_name=display_name,
+                # The command line creates the person who runs the office; they invite the rest.
+                role="owner",
             )
         )
         await session.commit()

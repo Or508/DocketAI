@@ -9,7 +9,7 @@ export function PublicBrand({ frame = "max-w-3xl px-4" }: { frame?: string }) {
   // `frame` is the page's own width and side padding, so the header lines up with the content below.
   return (
     <header className="border-b border-line bg-white/95 print:hidden">
-      <div className={`mx-auto flex h-14 items-center justify-between gap-3 ${frame}`}>
+      <div className={`mx-auto flex min-h-14 min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 ${frame}`}>
         <span className="flex items-center gap-2.5">
           <span aria-hidden className="flex h-8 w-8 items-center justify-center rounded-lg bg-tide text-white shadow-sm">
             <FolderOpen className="h-[18px] w-[18px]" />

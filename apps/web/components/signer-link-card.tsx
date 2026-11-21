@@ -73,6 +73,20 @@ export function SignerLinkCard({
   const [freshUrl, setFreshUrl] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [demo, setDemo] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/office/auth/me", { cache: "no-store" })
+      .then(async (response) => (response.ok ? ((await response.json()) as { demo_expires_at?: string | null }) : null))
+      .then((user) => {
+        if (!cancelled && user?.demo_expires_at) setDemo(true);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -206,7 +220,7 @@ export function SignerLinkCard({
             </Button>
             {mobile ? null : <p className="text-clay">אין מספר נייד ישראלי בתיק, ולכן אי אפשר לפתוח את וואטסאפ.</p>}
             </div>
-            <SigningQr value={signingUrl} />
+            <SigningQr value={signingUrl} prominent={demo} />
           </div>
         ) : null}
         {signed && signedText ? (

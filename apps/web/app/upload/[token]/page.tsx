@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { UploadScreen } from "./upload-screen";
 
 export const metadata: Metadata = {
-  title: "העלאת מסמכים מאובטחת לתיק",
+  title: "העלאת מסמכים — DocFlow",
   description: "העלאת המסמכים שהמשרד ביקש, ישירות לתיק שלכם.",
   robots: { index: false, follow: false },
   // The link itself is the credential: it must not travel to other sites in a Referer header.

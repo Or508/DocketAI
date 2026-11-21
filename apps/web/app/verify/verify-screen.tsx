@@ -2,6 +2,7 @@
 
 import { DragEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
+import { LegalFooter } from "@/app/(legal)/legal-footer";
 import { OfficeTopNav } from "@/components/OfficeTopNav";
 
 import { PublicBrand } from "./public-brand";
@@ -272,6 +273,7 @@ export function VerifyScreen({ initialCode, office = false }: { initialCode: str
         {outcome?.kind === "seal" ? <SealResult seal={outcome.seal} /> : null}
       </section>
     </main>
+    <LegalFooter frame="max-w-3xl px-5 lg:px-10" />
     </>
   );
 }

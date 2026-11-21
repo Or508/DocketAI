@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OfficePanel } from "./office-panel";
 import { SecurityPanel } from "./security-panel";
+import { TeamPanel } from "./team-panel";
 import {
   DEFAULT_OFFICE_SETTINGS,
   readOfficeSettings,
@@ -18,7 +19,7 @@ import {
 export function SettingsScreen() {
   const [settings, setSettings] = useState<OfficeSettings>(DEFAULT_OFFICE_SETTINGS);
   const [notice, setNotice] = useState<string | null>(null);
-  const [tab, setTab] = useState<"office" | "security">("office");
+  const [tab, setTab] = useState<"office" | "team" | "security">("office");
 
   useEffect(() => {
     setSettings(readOfficeSettings());
@@ -61,6 +62,15 @@ export function SettingsScreen() {
         <button
           type="button"
           role="tab"
+          aria-selected={tab === "team"}
+          className={`rounded-md px-4 py-2 text-sm font-semibold ${tab === "team" ? "bg-tide text-white" : "border border-line bg-white"}`}
+          onClick={() => setTab("team")}
+        >
+          צוות המשרד
+        </button>
+        <button
+          type="button"
+          role="tab"
           aria-selected={tab === "security"}
           className={`rounded-md px-4 py-2 text-sm font-semibold ${tab === "security" ? "bg-tide text-white" : "border border-line bg-white"}`}
           onClick={() => setTab("security")}
@@ -69,6 +79,7 @@ export function SettingsScreen() {
         </button>
       </div>
 
+      {tab === "team" ? <TeamPanel /> : null}
       {tab === "security" ? <SecurityPanel /> : null}
 
       {tab === "office" ? (

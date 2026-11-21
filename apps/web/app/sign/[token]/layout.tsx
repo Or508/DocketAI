@@ -1,3 +1,4 @@
+import { LegalFooter } from "@/app/(legal)/legal-footer";
 import { PublicBrand } from "@/app/verify/public-brand";
 
 export default function SignLayout({ children }: { children: React.ReactNode }) {
@@ -5,6 +6,7 @@ export default function SignLayout({ children }: { children: React.ReactNode }) 
     <>
       <PublicBrand />
       {children}
+      <LegalFooter frame="max-w-3xl px-4" />
     </>
   );
 }

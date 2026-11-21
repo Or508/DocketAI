@@ -63,12 +63,18 @@ export function hebrewDetail(status: number, detail: string): string {
     return "החתימה לא התקבלה. חתמו שוב בתוך המסגרת.";
   }
   if (/form changed|review it again/i.test(text)) {
-    return "המשרד עדכן פרט בטופס בהסכמתך – אנא עבור על הטופס המעודכן לפני החתימה";
+    return "המשרד עדכן פרט בטופס בהסכמתכם. עברו על הטופס המעודכן לפני החתימה.";
+  }
+  if (/already used|no longer active|no open signing link|no signing link/i.test(text)) {
+    return "הקישור כבר לא פעיל. לקבלת קישור חדש פנו למשרד.";
+  }
+  if (/signed copy is not available/i.test(text)) {
+    return "העותק החתום עדיין לא זמין. נסו שוב בעוד רגע.";
   }
   if (status === 400) return "הפרט לא נשמר. בדקו את הערך ונסו שוב.";
   if (status === 409) return "אי אפשר להמשיך כל עוד התיק לא מוכן לחתימה.";
   if (HEBREW.test(text)) return text;
-  return "הפעולה נכשלה.";
+  return "הפעולה לא הצליחה. נסו שוב, ואם זה חוזר פנו למשרד.";
 }
 
 export function hebrewUploadReason(reason: string): string {

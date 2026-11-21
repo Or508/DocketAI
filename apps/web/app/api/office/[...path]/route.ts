@@ -1,18 +1,13 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { forwardedClientIp } from "@/lib/server/client-ip";
+
 import { OFFICE_COOKIE, officeCookieOptions, sameOrigin } from "@/lib/server/office-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function rightmostForwarded(header: string | null): string {
-  const parts = (header ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-  return parts.length > 0 ? parts[parts.length - 1] : "";
-}
 
 function encodedSegments(raw: string[]): string[] | null {
   const decoded: string[] = [];
@@ -42,12 +37,14 @@ function allowed(segments: string[]): boolean {
     joined === "organization" ||
     joined === "organization/profession" ||
     joined === "organization/ai-reading" ||
+    joined === "organization/contact" ||
     // WhatsApp reminders that are due, for the office to send by hand.
     joined === "outreach/due"
   ) {
     return true;
   }
-  return segments[0] === "cases" || segments[0] === "processes";
+  // "team": the office's people (list for everyone; invite and changes for owners, checked by the API).
+  return segments[0] === "cases" || segments[0] === "processes" || segments[0] === "team";
 }
 
 export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {
@@ -91,7 +88,7 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
     headers.set("Authorization", `Bearer ${token}`);
     const contentType = request.headers.get("content-type");
     if (contentType) headers.set("Content-Type", contentType);
-    headers.set("X-Office-Client-Ip", rightmostForwarded(request.headers.get("x-forwarded-for")));
+    headers.set("X-Office-Client-Ip", forwardedClientIp(request));
     headers.set("X-Office-User-Agent", request.headers.get("user-agent") ?? "");
     const init: RequestInit & { duplex?: "half" } = {
       method: request.method,

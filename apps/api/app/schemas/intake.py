@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
+from app.schemas.portal import OfficeContact
 from pydantic import BaseModel, Field
 
 
@@ -34,6 +35,8 @@ class IntakeStatus(BaseModel):
     status: str
     required_drawers: list[IntakeDrawer]
     all_drawers_filled: bool
+    # Who asked for the documents, so the client knows whom to call.
+    office: OfficeContact | None = None
 
 
 class IntakeRoutedFile(BaseModel):

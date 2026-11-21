@@ -1,6 +1,6 @@
 "use client";
 
-import type { PortalSeal } from "@docketai/shared-types";
+import type { FieldSpec, PortalSeal } from "@docketai/shared-types";
 import { useState } from "react";
 
 import { SignedChecklist, SignedPdfFrame } from "@/components/signed-review";
@@ -11,11 +11,13 @@ export function IntegrityPanel({
   downloadExpiresAt,
   signedPdfUrl,
   certificateUrl,
+  fields,
 }: {
   seal: PortalSeal;
   downloadExpiresAt: string | null;
   signedPdfUrl: string;
   certificateUrl: string;
+  fields?: FieldSpec[];
 }) {
   const [copied, setCopied] = useState(false);
   const signed = new Intl.DateTimeFormat("he-IL", {
@@ -65,7 +67,7 @@ export function IntegrityPanel({
           </p>
         ) : null}
         <p className="text-sm leading-6">טביעת האצבע של הקובץ שהורדתם צריכה להיות זהה.</p>
-        <SignedChecklist />
+        <SignedChecklist fields={fields} />
         <div className="flex flex-col gap-2">
           <Button asChild className="min-h-11 w-full">
             <a href={signedPdfUrl}>צפייה והורדת הטופס החתום</a>

@@ -22,6 +22,9 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    # "owner" manages the office's people and settings; "staff" works on cases.
+    # Users who existed before roles became owners (the migration's server default).
+    role: Mapped[str] = mapped_column(String(16), default="staff", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     failed_logins: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)

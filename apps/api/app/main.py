@@ -69,6 +69,14 @@ async def _reminder_loop(container, every_seconds: int) -> None:
             raise
         except Exception:
             logger.exception("The reminder round failed")
+        try:
+            from app.services.demo_service import delete_expired_demos
+
+            await delete_expired_demos(container)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("The demo cleanup failed")
 
 
 @asynccontextmanager
@@ -119,7 +127,7 @@ class RateLimitMiddleware:
             if wait is not None:
                 response = JSONResponse(
                     status_code=429,
-                    content={"detail": "Too many requests. Try again shortly.", "code": "rate_limited"},
+                    content={"detail": "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.", "code": "rate_limited"},
                     headers={"Retry-After": str(int(wait)), "Cache-Control": "no-store"},
                 )
                 await response(scope, receive, send)
