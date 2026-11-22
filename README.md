@@ -1,22 +1,23 @@
-# DocketAI
+# DocFlow (DocketAI)
 
-**Audit-ready document onboarding, classification, and electronic signing, with first-class Hebrew and RTL support.**
+**Audit-ready document onboarding, AI document reading, and electronic signing for offices, with first-class Hebrew and RTL support.**
 
-DocketAI takes a bundle of PDFs and scans, classifies each file against a process checklist, shows exactly what is missing, collects the remaining details through a validated conversational clerk, and produces a flattened, signed PDF packet with a Certificate of Completion.
+DocFlow takes a bundle of PDFs and scans, reads and classifies each file against a process checklist with Claude or Gemini, shows exactly what is missing, collects the remaining details through a validated conversational clerk, and produces a flattened, signed PDF packet with a Certificate of Completion. Around that flow it gives an office what it needs day to day: client upload links, signing links sent by email or WhatsApp with scheduled reminders, a team with roles and invitations, two-step login, an audit log, and a one-click public demo.
 
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Next.js 15](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
-![Pytest](https://img.shields.io/badge/pytest-98%20passing-0A9EDC?logo=pytest&logoColor=white)
+![Pytest](https://img.shields.io/badge/pytest-475%20passing-0A9EDC?logo=pytest&logoColor=white)
 [![CI](https://github.com/Or508/DocketAI/actions/workflows/ci.yml/badge.svg)](https://github.com/Or508/DocketAI/actions/workflows/ci.yml)
 
-> **Project status:** DocketAI is a working portfolio system, not a hosted product. Office routes require a staff login. The API stays private behind the Next.js proxies. See [Known limitations](#known-limitations-and-roadmap).
+> **Project status:** DocFlow is a working portfolio system, not a hosted product yet. With `DEMO_MODE=true`, anyone can open a private sandbox office with synthetic data from `/demo`. Office routes otherwise require a staff login, and the API stays private behind the Next.js proxies. See [Known limitations](#known-limitations-and-roadmap).
 
 ## Contents
 
 - [How it works](#how-it-works)
+- [What an office gets](#what-an-office-gets)
 - [System architecture](#system-architecture)
 - [Engineering highlights](#engineering-highlights)
 - [Repository structure](#repository-structure)
@@ -24,22 +25,35 @@ DocketAI takes a bundle of PDFs and scans, classifies each file against a proces
 - [Storage](#storage)
 - [File intake](#file-intake)
 - [Testing and quality](#testing-and-quality)
+- [Deployment](#deployment)
 - [Known limitations and roadmap](#known-limitations-and-roadmap)
 
 ## How it works
 
 1. **Ingest.** The office opens a case for a process, such as employee onboarding, and uploads a bundle. File types are checked by content, not just by extension.
-2. **Classify.** PyMuPDF extracts text. Sparse pages are rendered and sent to Gemini with a structured schema. Labels confirmed by a person can be embedded in Qdrant and reused as few-shot examples.
+2. **Read and classify.** PyMuPDF extracts text. Sparse pages are rendered and read by the AI model with a structured schema: Claude by default, with Gemini behind the same interface as a backup. Labels confirmed by a person can be embedded in Qdrant and reused as few-shot examples.
 3. **Find the gaps.** A low-confidence suggestion never satisfies a requirement. Those files wait for a person to review them.
 4. **Collect.** A clerk gathers missing details and checks each one with deterministic validators, including the Israeli ID checksum. The model can rephrase a reply, but it cannot decide what gets recorded.
 5. **Sign.** The office signs in the workspace, or sends a signer a single-purpose link. The signer reviews a draft of the filled form before signing.
 6. **Finish.** The form is flattened, a Certificate of Completion is appended, and every page is numbered. Both the form content and the final file are hashed, and the event is written to the audit log.
 
-Gemini and Qdrant are optional. Without a key, every file waits for a human label and the clerk fills one field per message.
+The AI models and Qdrant are optional, and an office can turn AI reading off in its settings. Without a key, every file waits for a human label and the clerk fills one field per message.
+
+## What an office gets
+
+| Area | What it does |
+|---|---|
+| Processes by profession | Employee onboarding, real estate, and a dental clinic with its four consent forms, each with its own checklist and form. |
+| Client intake | A link the client opens to upload the missing documents themselves. |
+| Sending and reminders | The office sends the signing or upload link by email or as a prepared WhatsApp message, and sets reminders on a schedule within working hours. Times are shown in Israel time. |
+| Team | Owner and staff roles, invitations to join the office, and forgot-password and reset flows. |
+| Sign-in security | Optional two-step login (TOTP) managed in settings, and a rate limit on login and account links. |
+| Records | An audit log and a summary of the office's cases, both exportable to CSV, and public verification of a signed file by its hash or verification ID. |
+| Public demo | With `DEMO_MODE=true`, one click opens a private sandbox office with ready sample cases. |
 
 ## System architecture
 
-DocketAI is a monorepo with a Python API, a Next.js app, and a shared contract package.
+DocFlow is a monorepo with a Python API, a Next.js app, and a shared contract package.
 
 ```mermaid
 flowchart LR
@@ -53,8 +67,8 @@ flowchart LR
     Redis --> Worker["ARQ worker"]
     Worker --> DB
     Worker --> Files
-    API -.->|"Optional"| Gemini["Gemini"]
-    Worker -.->|"Optional"| Gemini
+    API -.->|"Optional"| AI["Claude / Gemini"]
+    Worker -.->|"Optional"| AI
     Worker -.->|"Optional"| Qdrant[("Qdrant")]
     API -.->|"Optional"| Qdrant
 ```
@@ -72,7 +86,7 @@ flowchart LR
 | Documents | PyMuPDF, ReportLab, pypdf, python-bidi, arabic-reshaper, bundled Rubik font |
 | Data | PostgreSQL (SQLite for zero-setup local runs), local or S3-compatible object storage |
 | Background work | Redis, ARQ |
-| AI | Gemini (classification, field extraction, reply phrasing), Qdrant (label memory) |
+| AI | Claude by default and Gemini as backup behind one interface (document reading, classification, field extraction, reply phrasing), Gemini embeddings and Qdrant (label memory) |
 | Infrastructure | Docker, Docker Compose |
 
 ## Engineering highlights
@@ -125,7 +139,7 @@ Object keys are the only stored paths. A new file is `org/{organization_id}/case
 - **Queue with fallback.** With `QUEUE_ENABLED=true`, an upload is queued only if a worker has published a live ARQ health key. Otherwise the API processes it in-process, so a case is not left waiting on a worker that isn't running.
 - **Restart recovery.** A queued job survives a worker restart, and documents left in `PROCESSING` are picked up again. In-process fallback work is lost if the API restarts.
 - **Live progress.** Pipeline progress reaches the browser over Server-Sent Events, backed by a one-second database poll, which works the same whether the API or a worker is doing the job.
-- **Streaming that cannot lose data.** The clerk's validated turn and template reply are committed before streaming starts. Gemini only rephrases field labels, validation messages, and the next question. If the stream fails or goes quiet for 20 seconds, the saved reply stands and the client replaces any partial text.
+- **Streaming that cannot lose data.** The clerk's validated turn and template reply are committed before streaming starts. The model only rephrases field labels, validation messages, and the next question. If the stream fails or goes quiet for 20 seconds, the saved reply stands and the client replaces any partial text.
 
 ### Contracts that cannot drift
 
@@ -139,9 +153,10 @@ A test compares the fields of each listed Pydantic model with its TypeScript int
 │   ├── api/
 │   │   ├── alembic/versions/     Database migrations
 │   │   ├── app/
-│   │   │   ├── api/routes/       HTTP routes: cases, portal, signing links
+│   │   │   ├── api/routes/       HTTP routes: cases, portal, signing links, intake, outreach,
+│   │   │   │                     team, account, audit, analytics, verify, demo
 │   │   │   ├── assets/           Bundled font and generated form templates
-│   │   │   ├── catalog/          Process definitions
+│   │   │   ├── catalog/          Process definitions by profession
 │   │   │   ├── core/             Configuration, container, dependencies
 │   │   │   ├── db/               Sessions and schema compatibility
 │   │   │   ├── domain/           Pure rules: readiness, tokens, text layout
@@ -155,11 +170,17 @@ A test compares the fields of each listed Pydantic model with its TypeScript int
 │       ├── app/
 │       │   ├── api/portal/       Same-origin signer proxy
 │       │   ├── cases/[id]/       Office case workspace
+│       │   ├── demo/             One-click public demo
+│       │   ├── settings/         Office, team, and sign-in security
+│       │   ├── upload/           Client intake links
 │       │   └── sign/[token]/     Signer portal
 │       ├── components/           Workspace, portal, and shared UI
 │       └── lib/                  Office and portal API clients
 ├── packages/
 │   └── shared-types/             TypeScript API contracts
+├── deploy/                       Production Compose, Caddy, and web image for a single server
+├── docs/deploy/                  Runbooks for Render and AWS Tel Aviv
+├── render.yaml                   Render blueprint
 ├── docker-compose.yml            Infrastructure, plus the optional app profile
 ├── .env.example
 └── package.json                  npm workspaces
@@ -282,7 +303,7 @@ The service is `clamav/clamav:1.5.4`, published only on `127.0.0.1:3310`. Set `C
 
 ## Testing and quality
 
-The API suite has 113 tests across 21 files. It runs on a temporary SQLite database and needs no external services. moto stands in for S3. To run the same suite against an S3-compatible server such as the compose RustFS, create a bucket and export `TEST_S3_ENDPOINT`, `TEST_S3_BUCKET`, `TEST_S3_REGION`, `TEST_S3_ACCESS_KEY_ID`, `TEST_S3_SECRET_ACCESS_KEY`, and `TEST_S3_FORCE_PATH_STYLE`, then run `pytest` from `apps/api`. Tests that read the local directory directly are skipped in that mode.
+The API suite has 475 tests across 56 files. It runs on a temporary SQLite database and needs no external services. moto stands in for S3. To run the same suite against an S3-compatible server such as the compose RustFS, create a bucket and export `TEST_S3_ENDPOINT`, `TEST_S3_BUCKET`, `TEST_S3_REGION`, `TEST_S3_ACCESS_KEY_ID`, `TEST_S3_SECRET_ACCESS_KEY`, and `TEST_S3_FORCE_PATH_STYLE`, then run `pytest` from `apps/api`. Tests that read the local directory directly are skipped in that mode.
 
 GitHub Actions runs the same checks on pushes and pull requests to `main`. The workflow is [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
@@ -327,6 +348,24 @@ npm run build -w web
 | Organization isolation | `test_tenancy.py` |
 | Object storage | `test_object_store.py`, `test_storage.py`, `test_storage_flow.py` |
 | File intake | `test_preflight.py`, `test_malware_scan.py`, `test_signature_intake.py` |
+| Two-step login and rate limits | `test_security_mfa.py`, `test_rate_limits.py` |
+| Team, invitations, password reset | `test_team.py` |
+| Sending links and reminders | `test_outreach.py` |
+| Client intake links | `test_smart_intake_and_clients.py`, `test_client_intake_and_audit_csv.py` |
+| Processes by profession | `test_dental_clinic.py`, `test_smart_upload_and_real_estate.py`, `test_employee_onboarding_e2e.py` |
+| AI reading and AI switch | `test_ai_engine.py`, `test_ai_policy.py`, `test_slot_reading.py` |
+| Public verification | `test_public_verify.py` |
+| Public demo | `test_demo.py`, `test_demo_documents.py` |
+| Migrations and production settings | `test_migrations.py`, `test_production_settings.py` |
+
+## Deployment
+
+Two deployment kits are in the repository. Neither has been run against a live account yet.
+
+- **Render and Cloudflare:** [`render.yaml`](render.yaml) and the runbook [`docs/deploy/render.md`](docs/deploy/render.md).
+- **One server with Docker Compose:** [`deploy/`](deploy) (production Compose file, Caddy for HTTPS, web image) and the runbook [`docs/deploy/aws-tel-aviv.md`](docs/deploy/aws-tel-aviv.md).
+
+With `ENVIRONMENT=production`, the API refuses to start on development defaults.
 
 ## Known limitations and roadmap
 
@@ -334,7 +373,7 @@ These are deliberate boundaries of the current version.
 
 | Area | Current state | Planned |
 |---|---|---|
-| Authentication | Office routes require a staff login. Sessions are httpOnly cookies on the Next.js app, and the API stays private behind that proxy. MFA, password reset, and SSO are not built. | Optional stronger sign-in |
+| Authentication | Office routes require a staff login, with optional two-step login (TOTP), owner and staff roles, invitations, and password reset. Sessions are httpOnly cookies on the Next.js app, and the API stays private behind that proxy. SSO is not built. | SSO |
 | Multi-tenancy | Each case belongs to one organization, and Qdrant label search is filtered by that organization. Database row-level security is not built. | Database policies in addition to the application filter |
 | PDF integrity | Changes are detected by comparing with the stored file hash. | Cryptographic PDF seal (PAdES) |
 | Signer identity | Holding the link is the only proof. Identity is not verified. | Optional stronger verification |
@@ -343,9 +382,9 @@ These are deliberate boundaries of the current version.
 
 The Next.js app must sit behind a reverse proxy that overwrites `X-Forwarded-For`. The office and portal proxies send the rightmost entry of that header to the API as the client address.
 
-**Privacy:** with a Gemini key set, document text and clerk messages are sent to Gemini, and confirmed excerpts are stored in Qdrant. Use synthetic data for demos.
+**Privacy:** with an AI key set, document text and clerk messages are sent to that provider (Anthropic or Google), and confirmed excerpts are stored in Qdrant. Use synthetic data for demos.
 
-**Legal:** DocketAI records evidence of a signing process. It does not provide legal advice, and its certificate wording has not been reviewed by a lawyer.
+**Legal:** DocFlow records evidence of a signing process. It does not provide legal advice, and its certificate wording has not been reviewed by a lawyer.
 
 ## Acknowledgements
 
