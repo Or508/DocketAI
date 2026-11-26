@@ -1,5 +1,15 @@
 # העלאה לפרודקשן ב-Render
 
+## דמו חינמי (זמני)
+
+ההקמה בתשלום מושהית ב-`deploy/render.paid.yaml`. הקובץ `render.yaml` בשורש הוא Blueprint חינמי: אתר, API ציבורי ומסד נתונים, בלי worker ובלי Redis. `DEMO_MODE` כבר `true`.
+
+לדמו הזה מדלגים על שלב 2 (דומיין) ועל שלב 7. בשלב 6: `PUBLIC_WEB_URL` הוא `https://docketflow-web.onrender.com`, ו-`EMAIL_FROM` יכול להיות `onboarding@resend.dev` (Resend שולח אז רק לבעל החשבון). אם Render נתן ל-API שם אחר, מעדכנים את `API_INTERNAL_URL` בשירות `docketflow-web` לכתובת שלו ופורסים את האתר מחדש.
+
+מסד הנתונים החינמי נמחק 30 יום אחרי היצירה. הקישור לשליחה: `https://docketflow-web.onrender.com/demo`.
+
+כדי לחזור להקמה בתשלום: מעבירים את `deploy/render.paid.yaml` בחזרה לשורש המאגר בשם `render.yaml`.
+
 המדריך מעלה את DocketFlow לשלושה שירותים שמנהלים מהדפדפן:
 
 | מה | איפה | אזור |

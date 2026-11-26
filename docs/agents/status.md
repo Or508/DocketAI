@@ -2,6 +2,18 @@
 
 Newest entry first. Format and rules: [README.md](README.md).
 
+## 2026-11-26 22:44 · cursor · brief 010 · done
+- Paid Blueprint moved to `deploy/render.paid.yaml` with one pause line at the top. New free `render.yaml`: public web + API, free Postgres, no worker or Redis, `DEMO_MODE=true`. Hebrew section "דמו חינמי (זמני)" added right after the title in the deploy guide. Committed and pushed on `cursor/office-security-and-profession-screens` (not `main`).
+- Files: render.yaml, deploy/render.paid.yaml, docs/deploy/render.md, docs/agents/briefs/010-render-free-demo.md, docs/agents/status.md
+- Checks: `python -c` yaml.safe_load on both YAML files passed; `npx tsc --noEmit -p apps/web` passed
+- Questions: none
+
+## 2026-11-26 22:40 · claude · brief 010 opened for Cursor · progress
+- The owner wants a free temporary link for a partner. Brief 010: move the paid `render.yaml` to `deploy/render.paid.yaml` (paused) and add a free-tier Blueprint (web + API as public web services, free Postgres, no worker/Redis, `DEMO_MODE=true`).
+- Files: docs/agents/briefs/010-render-free-demo.md
+- Checks: none yet (Cursor runs them).
+- Questions: none
+
 ## 2026-11-21 · claude · brief 009 review · done
 - Diff matches the brief: the signed checklist takes the process's own fields (`IntegrityPanel` → `SignedChecklist fields`), the demo page and banner
   show "דברו איתנו בוואטסאפ: 054-7302757" with the prefilled WhatsApp text, and each page has its own title.
